@@ -1,0 +1,4 @@
+const groups = [{ label: 'Book condition', words: ['condition', 'quality', 'damage', 'clean'] }, { label: 'Exchange convenience', words: ['exchange', 'pickup', 'meet', 'convenient', 'delivery'] }, { label: 'Pricing', words: ['price', 'cost', 'cheap', 'expensive', 'budget'] }];
+export function analyzeFeedback(feedback) {
+  return groups.map(g => { const comments = feedback.filter(f => g.words.some(w => f.comment.toLowerCase().includes(w))); return comments.length ? { label: g.label, summary: `${comments.length} comments mention ${g.label.toLowerCase()}.`, frequency: comments.length, sourceIds: comments.map(c => c.id), uncertainty: 'Keyword grouping is directional; validate with more interviews.', suggestedExperiment: `Test a focused improvement for ${g.label.toLowerCase()}.` } : null; }).filter(Boolean);
+}
