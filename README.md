@@ -43,7 +43,7 @@ The store is persisted as `skillmesh-store` in localStorage. Settings includes *
 
 ## Scoring formulas
 
-Builder Score is `0.20 GitHub Activity + 0.20 Problem Solving + 0.25 Skill Strength + 0.15 Project Evidence + 0.10 Consistency + 0.10 Profile Quality`. Each component is 0â€“100. Missing GitHub or LeetCode data uses a neutral 50 and is marked â€œNot linkedâ€. Tiers are Starter (0â€“39), Builder (40â€“64), Contributor (65â€“84), and Pro (85â€“100).
+Builder Score is `0.25 GitHub Activity + 0.30 Skill Strength + 0.20 Project Evidence + 0.15 Consistency + 0.10 Profile Quality`. Missing GitHub data uses a neutral 50 and is marked “Not linked”. Tiers are Starter (0–39), Builder (40–64), Contributor (65–84), and Pro (85–100).
 
 Team score is `0.45 Skill Coverage + 0.30 Availability Fit + 0.25 Role Diversity`. Team-size constraints are hard violations. Recommendations are deterministic signals and require human approval.
 
