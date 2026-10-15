@@ -7,6 +7,7 @@ import { useStore, currentUser, scoreFor } from './store/useStore';
 import { analyzeFeedback } from './lib/feedbackThemes';
 import { planTasks } from './lib/planner';
 import { scoreTeam } from './lib/teamScoring';
+import { service } from "./services/api";
 
 const Icon = ({ name, size = 16 }) => { const C = { LayoutDashboard, CircleUserRound, Goal, Activity, CalendarDays, Sparkles, Target, Users, ClipboardList, Rocket, Bell, SettingsIcon, GraduationCap, BookOpen, Network, BarChart3, Code2, ShieldCheck, Lightbulb, Search, Menu, Moon, Sun, LogOut, Github, ExternalLink, Plus, ArrowRight, Check, ChevronRight }[name] || Sparkles; return <C size={size} strokeWidth={1.8} />; };
 const initials = n => n?.split(' ').map(x => x[0]).join('').slice(0, 2);
@@ -19,7 +20,7 @@ function StatCard({ label, value, detail, icon }) { return <Card><div className=
 function Field({ label, children }) { return <div className="field"><label className="label">{label}</label>{children}</div>; }
 const FieldInput = p => <input className="input" {...p} />;
 
-const studentNav = [['Dashboard','/dashboard','LayoutDashboard'],['Profile','/profile','CircleUserRound'],['Goals','/goals','Goal'],['Activity Log','/activities','Activity'],['Deadlines','/deadlines','CalendarDays'],['AI Action Plan','/planner','Sparkles'],['Challenges','/challenges','Target'],['Invitations','/invitations','Users'],['My Hackathons','/hackathons','Trophy'],['Projects','/projects','ClipboardList'],['Startup','/startups/s1','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
+const studentNav = [['Dashboard','/dashboard','LayoutDashboard'],['Profile','/profile','CircleUserRound'],['Goals','/goals','Goal'],['Activity Log','/activities','Activity'],['Deadlines','/deadlines','CalendarDays'],['AI Action Plan','/planner','Sparkles'],['Challenges','/challenges','Target'],['Find Teammates','/challenges','Users'],['Invitations','/invitations','Users'],['My Hackathons','/hackathons','Trophy'],['Projects','/projects','ClipboardList'],['Startup','/startups/s1','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
 const organizerNav = [['Dashboard','/organizer','LayoutDashboard'],['Challenges','/organizer/challenges','Target'],['Create Challenge','/organizer/challenges/new','Plus'],['Participants','/organizer/challenges/c1/participants','Users'],['Teams','/organizer/challenges/c1/teams','Network'],['Approved Teams','/organizer/challenges/c1/approved','ShieldCheck'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
 const mentorNav = [['Dashboard','/mentor','LayoutDashboard'],['Projects & Startups','/projects','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
 
@@ -28,16 +29,216 @@ function Shell({ children }) {
   const nav = user?.role === 'organizer' ? organizerNav : user?.role === 'mentor' ? mentorNav : studentNav;
   useEffect(() => { document.documentElement.classList.toggle('dark', s.theme === 'dark'); }, [s.theme]);
   if (!user) return <Navigate to="/login" replace />;
-  return <div className="app"><div className="shell"><aside className="sidebar"><Link className="brand" to="/dashboard"><span className="brand-mark">S</span><span>SkillMesh</span></Link><div className="nav-label">{user.role} workspace</div><nav>{nav.map(([label, to, icon]) => <NavLink key={to} className="nav-link" to={to}><Icon name={icon}/><span>{label}</span>{label === 'Invitations' && <Badge tone="red">1</Badge>}</NavLink>)}</nav><div style={{marginTop:'auto'}}><button className="nav-link" onClick={() => {s.logout();navigate('/login')}}><Icon name="LogOut"/><span>Log out</span></button></div></aside><main className="main"><header className="topbar"><div className="row"><Menu className="accent" size={18}/><span className="muted">{location.pathname === '/' ? 'Home' : location.pathname.split('/').filter(Boolean).join(' / ')}</span></div><div className="row"><div className="row" style={{background:'#f5f5f4',borderRadius:8,padding:'6px 9px'}}><Search size={14}/><input aria-label="Search" placeholder="Search workspace" style={{border:0,outline:0,background:'transparent',width:150,fontSize:12}}/></div><button className="btn btn-secondary" aria-label="Toggle theme" onClick={s.toggleTheme}>{s.theme === 'light' ? <Moon size={15}/> : <Sun size={15}/>}</button><Link to="/notifications" className="nav-link" style={{padding:7}}><Bell size={17}/><Badge tone="red">2</Badge></Link><div className="row"><div className="avatar">{initials(user.name)}</div><span className="muted">{user.name.split(' ')[0]}</span></div></div></header><div className="content">{children}</div></main></div></div>;
+  return <div className="app"><div className="shell"><aside className="sidebar"><Link className="brand" to="/dashboard"><span className="brand-mark">S</span><span>SkillMesh</span></Link><div className="nav-label">{user.role} workspace</div><nav>{nav.map(([label, to, icon]) => <NavLink key={to} className="nav-link" to={to}><Icon name={icon}/><span>{label}</span>{label === 'Invitations' && <Badge tone="red">{s.invitations.filter(i => i.receiverId === user.id && i.status === 'Pending').length}</Badge>}</NavLink>)}</nav><div style={{marginTop:'auto'}}><button className="nav-link" onClick={() => {s.logout();navigate('/login')}}><Icon name="LogOut"/><span>Log out</span></button></div></aside><main className="main"><header className="topbar"><div className="row"><Menu className="accent" size={18}/><span className="muted">{location.pathname === '/' ? 'Home' : location.pathname.split('/').filter(Boolean).join(' / ')}</span></div><div className="row"><div className="row" style={{background:'#f5f5f4',borderRadius:8,padding:'6px 9px'}}><Search size={14}/><input aria-label="Search" placeholder="Search workspace" style={{border:0,outline:0,background:'transparent',width:150,fontSize:12}}/></div><button className="btn btn-secondary" aria-label="Toggle theme" onClick={s.toggleTheme}>{s.theme === 'light' ? <Moon size={15}/> : <Sun size={15}/>}</button><Link to="/notifications" className="nav-link" style={{padding:7}}><Bell size={17}/><Badge tone="red">2</Badge></Link><div className="row"><div className="avatar">{initials(user.name)}</div><span className="muted">{user.name.split(' ')[0]}</span></div></div></header><div className="content">{children}</div></main></div></div>;
 }
 
 function Landing() { return <div className="login-wrap" style={{display:'block'}}><div className="content"><div className="brand"><span className="brand-mark">S</span> SkillMesh</div><section className="hero"><Badge tone="purple">Student growth, team formation, delivery</Badge><h1>Turn your learning momentum into <span className="accent">real outcomes.</span></h1><p>SkillMesh connects the signals that matter — practice, projects, people, and experiments — so every next step is clear and human-approved.</p><div className="row"><Link className="btn btn-primary" to="/login">Explore the demo <ArrowRight size={15}/></Link><Link className="btn btn-secondary" to="/register">Create account</Link></div></section><div className="grid grid-3"><Card><Sparkles className="accent"/><h2 style={{marginTop:12}}>StudentOS AI</h2><p>See your Builder Score as a transparent signal, then turn goals and deadlines into practical actions.</p></Card><Card><Users className="accent"/><h2 style={{marginTop:12}}>TeamForge</h2><p>Find complementary teammates with explainable recommendations and hard human approval gates.</p></Card><Card><Rocket className="accent"/><h2 style={{marginTop:12}}>VentureTrack</h2><p>Move from project evidence to customer conversations, experiments, and traction without losing context.</p></Card></div><Card className="grid grid-3" style={{marginTop:14, textAlign:'center'}}>{['Learn','Join challenge','Form team','Deliver project','Validate idea','Update records'].map((x,i)=><div key={x}><div className="avatar" style={{margin:'0 auto 8px'}}>{i+1}</div><b style={{fontSize:12}}>{x}</b></div>)}</Card></div></div> }
 
-function Auth({ register = false }) { const s=useStore(), nav=useNavigate(), [form,setForm]=useState({name:'',email:'',password:'',role:'student'}); const submit=e=>{e.preventDefault();if(!form.email.includes('@')||form.password.length<6)return toast.error('Use a valid email and a password of 6+ characters.');let id=form.role==='organizer'?'organizer':form.role==='mentor'?'mentor':'aisha';if(register){toast.success('Demo account created');}s.login(id);nav('/dashboard');}; return <div className="login-wrap"><Card className="login-card"><Link className="brand" to="/"><span className="brand-mark">S</span><span>SkillMesh</span></Link><h1>{register?'Create your account':'Welcome back'}</h1><p>{register?'Start building your learning graph.':'Pick a demo workspace or sign in with credentials.'}</p><form onSubmit={submit}>{register&&<Field label="Name"><FieldInput required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Your name"/></Field>}<Field label="Email"><FieldInput required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="you@example.com"/></Field><Field label="Password"><FieldInput required minLength="6" type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="6+ characters"/></Field>{register&&<Field label="Role"><select className="select" value={form.role} onChange={e=>setForm({...form,role:e.target.value})}><option value="student">Student</option><option value="organizer">Organizer</option><option value="mentor">Mentor</option></select></Field>}<Button style={{width:'100%'}}>{register?'Create account':'Sign in'}</Button></form>{!register&&<><div className="muted" style={{textAlign:'center',margin:'16px 0 8px'}}>Quick demo access</div><div className="grid grid-3"><Button variant="secondary" onClick={()=>{s.login('aisha');nav('/dashboard')}}>Student</Button><Button variant="secondary" onClick={()=>{s.login('organizer');nav('/organizer')}}>Organizer</Button><Button variant="secondary" onClick={()=>{s.login('mentor');nav('/mentor')}}>Mentor</Button></div></>}<p style={{textAlign:'center',marginTop:18}}><Link className="accent" to={register?'/login':'/register'}>{register?'Already have an account? Sign in':'New here? Create an account'}</Link></p></Card></div> }
+function Auth({ register = false }) {
+  const s = useStore();
+  const nav = useNavigate();
 
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "student",
+  });
+
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+
+    if (
+      !form.email.trim() ||
+      form.password.length < 6 ||
+      (register && !form.name.trim())
+    ) {
+      return toast.error(
+        "Enter the required details and a password of 6+ characters."
+      );
+    }
+
+    setLoading(true);
+
+    try {
+      const response = register
+        ? await service.register(form)
+        : await service.login({
+            email: form.email,
+            password: form.password,
+          });
+
+      s.setAuthenticatedUser(response.user);
+
+      toast.success(response.message);
+      nav("/dashboard");
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message ||
+          "Unable to connect to SkillMesh. Check that the backend is running."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-wrap">
+      <Card className="login-card">
+        <Link className="brand" to="/">
+          <span className="brand-mark">S</span>
+          <span>SkillMesh</span>
+        </Link>
+
+        <h1>{register ? "Create your account" : "Welcome back"}</h1>
+
+        <p>
+          {register
+            ? "Start building your learning graph."
+            : "Sign in with your credentials."}
+        </p>
+
+        <form onSubmit={submit}>
+          {register && (
+            <Field label="Name">
+              <FieldInput
+                required
+                value={form.name}
+                onChange={(e) =>
+                  setForm({ ...form, name: e.target.value })
+                }
+                placeholder="Your name"
+              />
+            </Field>
+          )}
+
+          <Field label="Email">
+            <FieldInput
+              required
+              type="email"
+              value={form.email}
+              onChange={(e) =>
+                setForm({ ...form, email: e.target.value })
+              }
+              placeholder="you@example.com"
+            />
+          </Field>
+
+          <Field label="Password">
+            <FieldInput
+              required
+              minLength={6}
+              type="password"
+              value={form.password}
+              onChange={(e) =>
+                setForm({ ...form, password: e.target.value })
+              }
+              placeholder="6+ characters"
+            />
+          </Field>
+
+          {register && (
+            <Field label="Role">
+              <select
+                className="select"
+                value={form.role}
+                onChange={(e) =>
+                  setForm({ ...form, role: e.target.value })
+                }
+              >
+                <option value="student">Student</option>
+                <option value="organizer">Organizer</option>
+                <option value="mentor">Mentor</option>
+              </select>
+            </Field>
+          )}
+
+          <Button type="submit" disabled={loading} style={{ width: "100%" }}>
+            {loading
+              ? "Please wait..."
+              : register
+                ? "Create account"
+                : "Sign in"}
+          </Button>
+        </form>
+
+        {!register && (
+          <>
+            <div
+              className="muted"
+              style={{ textAlign: "center", margin: "16px 0 8px" }}
+            >
+              Quick demo access
+            </div>
+
+            <div className="grid grid-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  s.login("aisha");
+                  nav("/dashboard");
+                }}
+              >
+                Student
+              </Button>
+
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  s.login("organizer");
+                  nav("/organizer");
+                }}
+              >
+                Organizer
+              </Button>
+
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  s.login("mentor");
+                  nav("/mentor");
+                }}
+              >
+                Mentor
+              </Button>
+            </div>
+          </>
+        )}
+
+        <p style={{ textAlign: "center", marginTop: 18 }}>
+          <Link
+            className="accent"
+            to={register ? "/login" : "/register"}
+          >
+            {register
+              ? "Already have an account? Sign in"
+              : "New here? Create an account"}
+          </Link>
+        </p>
+      </Card>
+    </div>
+  );
+}
 function Dashboard() { const s=useStore(),u=currentUser(s), score=scoreFor(u), goals=s.goals.filter(x=>x.userId===u.id), acts=s.activities.filter(x=>x.userId===u.id), joined=s.challenges.filter(c=>c.participants.includes(u.id)), pending=s.invitations.filter(i=>i.receiverId===u.id&&i.status==='Pending'); const chart=score.components.map(c=>({name:c.label.split(' ')[0],value:c.value})); return <><PageHeader title={`Good morning, ${u.name.split(' ')[0]}`} subtitle="Your growth graph is moving. Here’s the clearest next step." action={<Button><Plus size={14}/> Log progress</Button>}/><div className="grid grid-4"><StatCard label="Active goals" value={goals.length} detail="2 on track" icon="Goal"/><StatCard label="Tasks due this week" value="4" detail="1 high priority" icon="ClipboardList"/><StatCard label="Weekly study hours" value="8.5h" detail="+18% vs last week" icon="Activity"/><StatCard label="Skills count" value={u.skills.length} detail="3 with evidence" icon="Sparkles"/></div><div className="grid grid-2" style={{marginTop:14}}><Card><div className="row between"><div><h2>Builder Score</h2><p>A transparent signal, not a judgment of worth.</p></div><ScoreBadge user={u}/></div><div style={{height:210}}><ResponsiveContainer><RadarChart data={chart}><PolarGrid/><PolarAngleAxis dataKey="name" tick={{fontSize:10}}/><PolarRadiusAxis domain={[0,100]} tick={false}/><Radar dataKey="value" stroke="#6d4aff" fill="#6d4aff" fillOpacity=".28"/></RadarChart></ResponsiveContainer></div><div className="grid grid-2">{score.components.map(c=><div key={c.key}><div className="row between"><span className="muted">{c.label}</span><span className="muted">{c.notLinked?'Not linked':`${c.value}/100`}</span></div><div className="progress"><span style={{width:`${c.value}%`}}/></div></div>)}</div><p style={{marginTop:12}}><b>How to improve:</b> {score.tips[0] || 'Keep shipping evidence and reflecting weekly.'}</p></Card><Card><div className="row between"><h2>Weekly activity</h2><Badge tone="green">On track</Badge></div><div style={{height:210}}><ResponsiveContainer><BarChart data={[{d:'Mon',h:1.5},{d:'Tue',h:2},{d:'Wed',h:0.5},{d:'Thu',h:2.5},{d:'Fri',h:1},{d:'Sat',h:1},{d:'Sun',h:0}]}><CartesianGrid vertical={false} stroke="#eee"/><XAxis dataKey="d" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="h" fill="#8b76ff" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div><div className="list">{acts.slice(0,2).map(a=><div className="list-item row between" key={a.id}><div><b style={{fontSize:12}}>{a.type}</b><p>{a.notes}</p></div><span className="muted">{a.duration}m</span></div>)}</div></Card></div><div className="grid grid-2" style={{marginTop:14}}><Card><div className="row between"><h2>Today’s AI plan</h2><Link className="accent muted" to="/planner">View plan</Link></div>{planTasks([{title:'Practice two medium problems',duration:45,importance:80,urgency:90,effort:40},{title:'Polish onboarding flow',duration:60,importance:90,urgency:70,effort:50}],3).map(x=><div className="list-item row between" key={x.title}><div><b style={{fontSize:13}}>{x.title}</b><p>{x.reason}</p></div><Badge tone="purple">{x.duration}m</Badge></div>)}</Card><Card><div className="row between"><h2>My hackathons</h2><Link className="accent muted" to="/challenges">Browse</Link></div>{joined.map(c=><div className="list-item" key={c.id}><div className="row between"><b style={{fontSize:13}}>{c.title}</b><Badge tone="green">Joined</Badge></div><p>{c.requiredSkills.join(' · ')} · deadline {c.deadline}</p></div>)}{pending.length>0&&<p className="accent"><Bell size={13}/> {pending.length} pending invitation</p>}</Card></div></> }
 
-function Profile({ viewId }) { const s=useStore(), u=s.users.find(x=>x.id===viewId)||currentUser(s), own=u.id===s.currentUserId, [edit,setEdit]=useState({education:u.education,careerGoal:u.careerGoal}); return <><PageHeader title={own?'My profile':u.name} subtitle="Make your strengths legible with evidence and context." action={own&&<Button onClick={()=>{s.updateProfile(edit);toast.success('Profile saved')}}><Check size={14}/> Save changes</Button>}/><div className="grid grid-2"><Card><h2>About</h2>{own?<><Field label="Education"><FieldInput value={edit.education} onChange={e=>setEdit({...edit,education:e.target.value})}/></Field><Field label="Career goal"><FieldInput value={edit.careerGoal} onChange={e=>setEdit({...edit,careerGoal:e.target.value})}/></Field></>:<p>{u.education} · {u.careerGoal}</p>}<h3 style={{marginTop:18}}>Skills</h3><div className="row" style={{flexWrap:'wrap'}}>{u.skills.map(x=><Badge key={x.name} tone={x.verified?'green':''}>{x.name} · {x.level}</Badge>)}</div></Card><Card><div className="row between"><h2>Builder Score</h2><ScoreBadge user={u}/></div><p>Refresh linked profiles to recompute the score. Organizers never use it as the only factor.</p><div className="list" style={{marginTop:10}}>{[['GitHub',u.github?.username,u.github?'18 repos · 120 stars':'Not linked'],['LeetCode',u.leetcode?.username,u.leetcode?'137 solved · 1480 rating':'Not linked']].map(x=><div className="list-item row between" key={x[0]}><div className="row"><div className="avatar">{x[0][0]}</div><div><b style={{fontSize:13}}>{x[0]}</b><p>{x[1]||x[2]}</p></div></div><Badge tone={x[1]?'green':'amber'}>{x[2]}</Badge></div>)}</div></Card></div><Card style={{marginTop:14}}><h2>Weekly availability</h2><div className="grid grid-4">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><div className="row" key={d}><span style={{width:28,fontSize:11}}>{d}</span>{['AM','PM','Eve'].map(t=><Badge key={t} tone={d==='Tue'||t==='Eve'?'purple':''}>{t}</Badge>)}</div>)}</div></Card></> }
+function Profile({ viewId }) {
+  const s = useStore(), u = s.users.find(x => x.id === viewId) || currentUser(s), own = u.id === s.currentUserId, score = scoreFor(u);
+  const [edit, setEdit] = useState({ education: u.education || '', careerGoal: u.careerGoal || '', interests: u.interests || [], preferredRoles: u.preferredRoles || [u.preferredRole].filter(Boolean) });
+  const [interest, setInterest] = useState(''), [skillName, setSkillName] = useState(''), [skillLevel, setSkillLevel] = useState('Intermediate'), [skillEvidence, setSkillEvidence] = useState(''), [confirmRemove, setConfirmRemove] = useState(null), [link, setLink] = useState(u.github?.username || ''), [linkError, setLinkError] = useState(''), [refreshing, setRefreshing] = useState(false);
+  const roles = ['Frontend','Backend','Product','Design','ML Engineer','DevOps','Mobile'];
+  const dictionary = ['React','Node.js','TypeScript','Python','UI/UX','Testing','Databases','APIs','Machine Learning','Data Analysis','Cloud','DevOps','Product','Research','React Native'];
+  const save = () => { s.updateProfile(edit); toast.success('Profile saved and Builder Score recomputed'); };
+  const addInterest = () => { const value = interest.trim(); if (value && !edit.interests.includes(value)) setEdit({ ...edit, interests: [...edit.interests, value] }); setInterest(''); };
+  const addSkill = () => { if (!skillName.trim()) return; s.upsertSkill({ name: skillName.trim(), level: skillLevel, evidence: skillEvidence.trim() }); setSkillName(''); setSkillEvidence(''); toast.success('Skill saved and Builder Score recomputed'); };
+  const saveGitHub = () => { const value = link.trim(), username = value.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\/$/, ''); if (!/^(https?:\/\/(www\.)?github\.com\/[^/]+\/?|[A-Za-z0-9-]+)$/.test(value)) return setLinkError('Use github.com/<user> or a GitHub username.'); s.saveLinks({ github: { username, repos: 0, commits: 0, stars: 0, languages: 0, topLanguages: [], activity: [], lastSynced: 'Just now', source: 'Unverified', verified: false } }); setLinkError(''); toast.success('GitHub linked'); };
+  const refresh = () => { setRefreshing(true); window.setTimeout(() => { s.refreshLinks('github'); setRefreshing(false); toast.success('GitHub refreshed; score updated'); }, 500); };
+  return <><PageHeader title={own ? 'My profile' : u.name} subtitle="Make your strengths legible with evidence and context." action={own && <Button onClick={save}><Check size={14}/> Save changes</Button>}/><div className="grid grid-2"><Card><h2>About</h2>{own ? <><div className="grid grid-2"><Field label="Education"><FieldInput value={edit.education} onChange={e=>setEdit({...edit,education:e.target.value})}/></Field><Field label="Career goal"><FieldInput value={edit.careerGoal} onChange={e=>setEdit({...edit,careerGoal:e.target.value})}/></Field></div><Field label="Interests"><div className="row"><FieldInput value={interest} onChange={e=>setInterest(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(e.preventDefault(),addInterest())} placeholder="Add an interest"/><Button variant="secondary" onClick={addInterest}><Plus size={14}/></Button></div><div className="row" style={{flexWrap:'wrap',marginTop:7}}>{edit.interests.map(x=><button className="badge badge-purple" key={x} onClick={()=>setEdit({...edit,interests:edit.interests.filter(i=>i!==x)})}>{x} <X size={11}/></button>)}</div></Field><Field label="Preferred roles"><div className="row" style={{flexWrap:'wrap'}}>{roles.map(role=><label className="badge" key={role}><input type="checkbox" checked={edit.preferredRoles.includes(role)} onChange={e=>setEdit({...edit,preferredRoles:e.target.checked?[...edit.preferredRoles,role]:edit.preferredRoles.filter(x=>x!==role)})}/>{role}</label>)}</div></Field></> : <p>{u.education} � {u.careerGoal}</p>}<h2 style={{marginTop:18}}>Skills manager</h2>{own&&<><div className="grid grid-2"><Field label="Search dictionary or enter free text"><FieldInput list="skill-dictionary" value={skillName} onChange={e=>setSkillName(e.target.value)} placeholder="e.g. React"/><datalist id="skill-dictionary">{dictionary.map(x=><option key={x} value={x}/>)}</datalist></Field><Field label="Proficiency"><select className="select" value={skillLevel} onChange={e=>setSkillLevel(e.target.value)}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field></div><div className="row"><FieldInput value={skillEvidence} onChange={e=>setSkillEvidence(e.target.value)} placeholder="Optional evidence URL"/><Button onClick={addSkill}><Plus size={14}/> Add skill</Button></div></>}{(u.skills||[]).map(x=><div className="list-item row between" key={x.name}><div><b style={{fontSize:13}}>{x.name}</b><p>{x.level}{x.evidence?` � ${x.evidence}`:''}</p></div><div className="row">{x.evidence&&<Badge tone="green"><ShieldCheck size={12}/> Verified</Badge>}{own&&<Button variant="danger" onClick={()=>setConfirmRemove(x.name)}>Remove</Button>}</div></div>)}{confirmRemove&&<div className="row" style={{marginTop:10}}><span style={{fontSize:12}}>Remove {confirmRemove}?</span><Button variant="danger" onClick={()=>{s.removeSkill(confirmRemove);setConfirmRemove(null);toast.success('Skill removed; score updated')}}>Confirm</Button><Button variant="secondary" onClick={()=>setConfirmRemove(null)}>Cancel</Button></div>}</Card><Card><div className="row between"><div><h2>Builder Score</h2><p>A transparent signal, not a judgment of worth; never the only factor.</p></div><ScoreBadge user={u}/></div><div className="list" style={{marginTop:14}}>{score.components.map(c=><div key={c.key}><div className="row between"><span className="muted">{c.label} � {Math.round(c.weight*100)}%</span><span className="muted">{c.notLinked?'Not linked':`${c.value}/100`}</span></div><div className="progress"><span style={{width:`${c.value}%`}}/></div></div>)}</div><details style={{marginTop:14}}><summary className="muted">How is this calculated?</summary><p>Builder Score = 25% GitHub Activity + 30% Skill Strength + 20% Project Evidence + 15% Consistency + 10% Profile Quality.</p><p>Tiers: Starter 0�39, Builder 40�64, Contributor 65�84, Pro 85�100.</p></details><h3 style={{marginTop:16}}>How to improve</h3>{score.tips.slice(0,3).map(t=><p key={t}>� {t}</p>)}</Card></div><div className="grid grid-2" style={{marginTop:14}}><Card><div className="row between"><div className="row"><div className="avatar"><Github size={16}/></div><div><h2 style={{margin:0}}>GitHub</h2>{u.github&&<a className="accent" href={`https://github.com/${u.github.username}`} target="_blank" rel="noreferrer">@{u.github.username} <ExternalLink size={11}/></a>}</div></div><Badge tone={u.github?'green':'amber'}>{u.github?(u.github.verified?'Verified':'Unverified'):'Not linked'}</Badge></div>{u.github?<><div className="grid grid-3" style={{margin:'16px 0'}}><div><span className="muted">Repos</span><div className="stat-value">{u.github.repos}</div></div><div><span className="muted">Stars</span><div className="stat-value">{u.github.stars}</div></div><div><span className="muted">Commits</span><div className="stat-value">{u.github.commits}</div></div></div><div style={{height:70}}><ResponsiveContainer><LineChart data={(u.github.activity||[]).map((value,i)=>({i,value}))}><Line type="monotone" dataKey="value" stroke="#6d4aff" strokeWidth={3} dot={false}/><Tooltip/></LineChart></ResponsiveContainer></div><div className="row" style={{flexWrap:'wrap'}}>{(u.github.topLanguages||[]).map(x=><Badge tone="purple" key={x}>{x}</Badge>)}</div><div className="row between" style={{marginTop:16}}><span className="muted">Last synced: {u.github.lastSynced||'Not yet'}</span><div className="row"><Button variant="secondary" onClick={refresh} disabled={refreshing}>{refreshing?'Refreshing�':'Refresh'}</Button><Button variant="secondary" onClick={()=>setLink(u.github.username)}>Edit</Button><Button variant="danger" onClick={()=>{s.saveLinks({github:null});toast.success('GitHub unlinked')}}>Unlink</Button></div></div></>:<><p>Link GitHub to enrich your score with real activity.</p><Field label="Username or profile URL"><FieldInput value={link} onChange={e=>{setLink(e.target.value);setLinkError('')}} placeholder="github.com/username"/></Field>{linkError&&<p style={{color:'#b91c1c'}}>{linkError}</p>}<Button onClick={saveGitHub}>Link GitHub</Button></>}</Card><Card><h2>Profile evidence</h2><p>Project evidence, activity consistency, and profile completeness contribute to the score. Keep your profile current and attach evidence links to skills.</p><div className="row" style={{flexWrap:'wrap',marginTop:12}}>{(u.interests||[]).map(x=><Badge tone="purple" key={x}>{x}</Badge>)}</div></Card></div><Card style={{marginTop:14}}><h2>Weekly availability</h2><div className="grid grid-4">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><div className="row" key={d}><span style={{width:28,fontSize:11}}>{d}</span>{['AM','PM','Eve'].map(t=><Badge key={t} tone={d==='Tue'||t==='Eve'?'purple':''}>{t}</Badge>)}</div>)}</div></Card></>;
+}
 function Goals() { const s=useStore(),u=currentUser(s),[title,setTitle]=useState('');return <><PageHeader title="Goals" subtitle="Turn intent into visible momentum." action={<div className="row"><FieldInput value={title} onChange={e=>setTitle(e.target.value)} placeholder="New goal title"/><Button onClick={()=>{if(title){s.addGoal({title,targetDate:'2026-11-15',priority:'Medium',status:'In progress'});setTitle('');toast.success('Goal added')}}}><Plus size={14}/> Add</Button></div>}/><div className="grid grid-3">{s.goals.filter(x=>x.userId===u.id).map(g=><Card key={g.id}><div className="row between"><Badge tone={g.priority==='High'?'red':'purple'}>{g.priority}</Badge><span className="muted">{g.targetDate}</span></div><h2 style={{marginTop:14}}>{g.title}</h2><div className="progress"><span style={{width:`${g.progress}%`}}/></div><div className="row between" style={{marginTop:8}}><span className="muted">{g.status}</span><b style={{fontSize:12}}>{g.progress}%</b></div></Card>)}</div></> }
 function Activities() { const s=useStore(),u=currentUser(s),[type,setType]=useState('coding'),[duration,setDuration]=useState(45);return <><PageHeader title="Activity log" subtitle="Consistency beats intensity. Keep the record honest."/><div className="grid grid-3"><Card><h2>Log activity</h2><Field label="Type"><select className="select" value={type} onChange={e=>setType(e.target.value)}><option>coding</option><option>course</option><option>project</option><option>practice</option></select></Field><Field label="Duration (minutes)"><FieldInput type="number" value={duration} onChange={e=>setDuration(e.target.value)}/></Field><Button onClick={()=>{s.addActivity({type,duration:Number(duration),date:'2026-10-15',notes:'Focused practice session'});toast.success('Activity logged')}}><Plus size={14}/> Save activity</Button></Card><Card><h2>Consistency</h2><div className="stat-value">8 day streak</div><p>Weekly total 8.5 hours · 86% consistency</p><div className="progress"><span style={{width:'72%'}}/></div></Card><Card><h2>Weekly hours</h2><div style={{height:130}}><ResponsiveContainer><BarChart data={[{d:'M',h:1.5},{d:'T',h:2},{d:'W',h:.5},{d:'T',h:2.5},{d:'F',h:1}]}><XAxis dataKey="d"/><Bar dataKey="h" fill="#6d4aff"/></BarChart></ResponsiveContainer></div></Card></div><Card style={{marginTop:14}}><h2>Recent activity</h2>{s.activities.filter(x=>x.userId===u.id).map(a=><div className="list-item row between" key={a.id}><div><Badge tone="purple">{a.type}</Badge><span style={{marginLeft:10,fontSize:13}}>{a.notes}</span></div><span className="muted">{a.date} · {a.duration}m</span></div>)}</Card></> }
 function Deadlines() { const s=useStore(),u=currentUser(s),[title,setTitle]=useState('');return <><PageHeader title="Deadlines" subtitle="See workload before it becomes a surprise." action={<Button onClick={()=>{if(title){s.addDeadline({title,date:'2026-11-20',effort:4,importance:'Medium'});setTitle('');toast.success('Deadline added')}}}><Plus size={14}/> Add deadline</Button>}/><div className="grid grid-2"><Card><h2>Workload heatmap</h2><div className="grid grid-4">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun','Next'].map((d,i)=><div key={d} style={{padding:18,background:i===1||i===4?'#fed7aa':'#dcfce7',borderRadius:8,textAlign:'center',fontSize:12}}>{d}<br/><b>{i===1?8:i===4?6:2}h</b></div>)}</div></Card><Card><h2>Add a deadline</h2><Field label="Title"><FieldInput placeholder="Pitch deck review" value={title} onChange={e=>setTitle(e.target.value)}/></Field><Field label="Date"><FieldInput type="date" defaultValue="2026-11-20"/></Field><Field label="Estimated effort"><FieldInput placeholder="4 hours"/></Field></Card></div><Card style={{marginTop:14}}><h2>Upcoming</h2>{s.deadlines.filter(x=>x.userId===u.id).map(d=><div className="list-item row between" key={d.id}><div><b style={{fontSize:13}}>{d.title}</b><p>{d.importance} importance · {d.effort}h effort</p></div><Badge tone="amber">{d.date}</Badge></div>)}</Card></> }
@@ -46,7 +247,7 @@ function Planner() { const items=planTasks([{title:'Practice two medium problems
 function Challenges() { const s=useStore(),u=currentUser(s),[q,setQ]=useState('');return <><PageHeader title="Browse challenges" subtitle="Find a problem worth your next focused sprint." action={<div className="row"><Search size={15}/><FieldInput value={q} onChange={e=>setQ(e.target.value)} placeholder="Search challenges"/></div>}/><div className="grid grid-3">{s.challenges.filter(c=>c.title.toLowerCase().includes(q.toLowerCase())).map(c=><Card key={c.id}><div className="row between"><Badge tone="purple">Open</Badge><span className="muted">{c.participants.length} joined</span></div><h2 style={{marginTop:13}}>{c.title}</h2><p>{c.description}</p><div className="row" style={{flexWrap:'wrap',margin:'12px 0'}}>{c.requiredSkills.map(x=><Badge key={x}>{x}</Badge>)}</div><div className="row between"><span className="muted">Teams of {c.teamSize} · {c.deadline}</span><Link className="btn btn-primary" to={`/challenges/${c.id}`}>View <ChevronRight size={14}/></Link></div></Card>)}</div></> }
 function ChallengeDetail() { const {id}=useParams(),s=useStore(),u=currentUser(s),c=s.challenges.find(x=>x.id===id)||s.challenges[0],joined=c.participants.includes(u.id); return <><PageHeader title={c.title} subtitle={c.description} action={joined?<Badge tone="green">Joined</Badge>:<Button onClick={()=>{s.joinChallenge(c.id);toast.success('Challenge joined')}}>Join challenge</Button>}/><div className="grid grid-2"><Card><h2>Challenge brief</h2><p>Required skills and roles are signals for a balanced team, not a ranking of people.</p><h3 style={{marginTop:16}}>Required skills</h3><div className="row" style={{flexWrap:'wrap'}}>{c.requiredSkills.map(x=><Badge tone="purple" key={x}>{x}</Badge>)}</div><h3 style={{marginTop:16}}>Team constraints</h3><p>Up to {c.teamSize} members · deadline {c.deadline}</p></Card><Card><h2>Your match</h2><div className="stat-value">78%</div><p>Your profile covers React and UI/UX. Add a data teammate to close the biggest gap.</p><div className="progress"><span style={{width:'78%'}}/></div><div className="row" style={{marginTop:18}}><Link className="btn btn-primary" to={`/challenges/${c.id}/find-teammates`}>Find teammates <Users size={14}/></Link><Link className="btn btn-secondary" to={`/challenges/${c.id}/my-team`}>My team</Link></div></Card></div></> }
 function FindTeammates() { const {id}=useParams(),s=useStore(),u=currentUser(s),c=s.challenges.find(x=>x.id===id)||s.challenges[0], [sent,setSent]=useState(null);const people=s.users.filter(x=>x.id!==u.id&&c.participants.includes(x.id));return <><PageHeader title="Find teammates" subtitle={`${people.length} participants in ${c.title}.`} action={<Badge tone="amber">Human approval required</Badge>}/><div className="grid grid-3">{people.map(p=><Card key={p.id}><div className="row between"><div className="row"><div className="avatar">{initials(p.name)}</div><div><Link className="accent" to={`/students/${p.id}`}><b style={{fontSize:13}}>{p.name}</b></Link><p>{p.preferredRole}</p></div></div><ScoreBadge user={p}/></div><div className="row" style={{flexWrap:'wrap',margin:'13px 0'}}>{p.skills.slice(0,3).map(x=><Badge key={x.name}>{x.name}</Badge>)}</div><div className="row between"><span className="muted">78% availability match</span><Button onClick={()=>setSent(p)}>Send invite</Button></div></Card>)}</div>{sent&&<div className="login-wrap" style={{position:'fixed',inset:0,zIndex:5,background:'#11182766'}}><Card className="login-card"><div className="row between"><h2>Invite {sent.name}</h2><button className="btn btn-secondary" onClick={()=>setSent(null)}><X size={15}/></button></div><Field label="Role offered"><select className="select"><option>{sent.preferredRole}</option><option>Contributor</option></select></Field><Field label="Message"><textarea className="textarea" defaultValue={`I’d love your ${sent.skills[0]?.name} perspective on this challenge.`}/></Field><div className="row" style={{justifyContent:'flex-end'}}><Button variant="secondary" onClick={()=>setSent(null)}>Cancel</Button><Button onClick={()=>{try{s.sendInvite({challengeId:c.id,receiverId:sent.id,role:sent.preferredRole,requiredSkills:c.requiredSkills,message:'Let’s build together.'});toast.success('Invitation sent');setSent(null)}catch(e){toast.error(e.message)}}}>Send invite</Button></div></Card></div>}</> }
-function Invitations() { const s=useStore(),u=currentUser(s), incoming=s.invitations.filter(i=>i.receiverId===u.id), getUser=id=>s.users.find(x=>x.id===id);return <><PageHeader title="Invitations" subtitle="Build teams with clear expectations and consent."/><div className="tabs"><button className="tab active">Received ({incoming.length})</button><button className="tab">Sent</button></div><div className="grid grid-2">{incoming.map(i=>{const from=getUser(i.senderId);return <Card key={i.id}><div className="row between"><div className="row"><div className="avatar">{initials(from?.name)}</div><div><b style={{fontSize:13}}>{from?.name}</b><p>{i.role} · {i.createdAt}</p></div></div><Badge tone={i.status==='Pending'?'amber':i.status==='Accepted'?'green':'red'}>{i.status}</Badge></div><p style={{margin:'14px 0'}}>{i.message}</p>{i.status==='Pending'&&<div className="row"><Button onClick={()=>{s.respondInvite(i.id,'Accepted');toast.success('Invitation accepted')}}><Check size={14}/> Accept</Button><Button variant="secondary" onClick={()=>s.respondInvite(i.id,'Declined')}>Decline</Button></div>}</Card>})}</div></> }
+function Invitations() { const s=useStore(),u=currentUser(s), incoming=s.invitations.filter(i=>i.receiverId===u.id), getUser=id=>s.users.find(x=>x.id===id);return <><PageHeader title="Invitations" subtitle="Build teams with clear expectations and consent."/><div className="tabs"><button className="tab active">Received ({incoming.length})</button><button className="tab">Sent</button></div><div className="grid grid-2">{incoming.map(i=>{const from=getUser(i.senderId);return <Card key={i.id}><div className="row between"><div className="row"><div className="avatar">{initials(from?.name)}</div><div><b style={{fontSize:13}}>{from?.name}</b><p>{i.role} · {i.createdAt}</p></div></div><Badge tone={i.status==='Pending'?'amber':i.status==='Accepted'?'green':'red'}>{i.status === 'Accepted' ? 'Invitation accepted' : i.status}</Badge></div><p style={{margin:'14px 0'}}>{i.message}</p>{i.status==='Pending'&&<div className="row"><Button onClick={()=>{try { s.respondInvite(i.id,'Accepted'); toast.success('Invitation accepted'); } catch (error) { toast.error(error.message); }}}><Check size={14}/> Accept</Button><Button variant="secondary" onClick={()=>s.respondInvite(i.id,'Declined')}>Decline</Button></div>}</Card>})}</div></> }
 function Hackathons() { const s=useStore(),u=currentUser(s),teams=s.teams.filter(t=>t.members.includes(u.id));return <><PageHeader title="My hackathons" subtitle="Your active challenge commitments and team health."/><div className="grid grid-2">{s.challenges.filter(c=>c.participants.includes(u.id)).map(c=>{const t=teams.find(x=>x.challengeId===c.id);return <Card key={c.id}><div className="row between"><h2>{c.title}</h2><Badge tone={t?.approval==='Approved'?'green':'amber'}>{t?t.approval:'No team yet'}</Badge></div><p>Deadline {c.deadline} · team size {c.teamSize}</p>{t?<><div className="row" style={{margin:'14px 0'}}>{t.members.map(id=><div className="avatar" title={s.users.find(x=>x.id===id)?.name} key={id}>{initials(s.users.find(x=>x.id===id)?.name)}</div>)}</div><div className="row" style={{flexWrap:'wrap'}}>{(t.coveredSkills||c.requiredSkills.slice(0,2)).map(x=><Badge tone="green" key={x}>{x}</Badge>)}{(t.missingSkills||c.requiredSkills.slice(2)).map(x=><Badge tone="red" key={x}>{x}</Badge>)}</div></>:<Link className="btn btn-primary" to={`/challenges/${c.id}/find-teammates`} style={{marginTop:14}}>Find teammates</Link>}</Card>})}</div></> }
 function Projects() { const s=useStore();return <><PageHeader title="Projects" subtitle="Evidence grows when work is visible, shared, and shipped." action={<Button><Plus size={14}/> New project</Button>}/><div className="grid grid-3">{s.projects.map(p=><Card key={p.id}><div className="row between"><Badge tone="green">{p.status}</Badge><span className="muted">{p.progress}%</span></div><h2 style={{marginTop:14}}>{p.name}</h2><p>{p.description}</p><div className="progress" style={{margin:'14px 0'}}><span style={{width:`${p.progress}%`}}/></div><div className="row between"><span className="muted">{p.tasks.length} tasks · {p.members.length} members</span><Link className="btn btn-secondary" to={`/projects/${p.id}`}>Open</Link></div></Card>)}</div></> }
 function ProjectDetail() { const {id}=useParams(),s=useStore(),p=s.projects.find(x=>x.id===id)||s.projects[0],cols=['To Do','In Progress','Review','Done'];return <><PageHeader title={p.name} subtitle={p.description} action={<Badge tone="green">{p.progress}% delivered</Badge>}/><div className="tabs"><button className="tab active">Tasks</button><button className="tab">Milestones</button><button className="tab">Members</button><button className="tab">Evidence</button></div><div className="grid grid-4">{cols.map(col=><Card key={col}><div className="row between"><h3>{col}</h3><Badge>{p.tasks.filter(t=>t.column===col).length}</Badge></div>{p.tasks.filter(t=>t.column===col).map(t=><div className="list-item" key={t.id}><div className="row between"><b style={{fontSize:12}}>{t.title}</b><Badge tone={t.priority==='High'?'red':''}>{t.priority}</Badge></div><p>{s.users.find(u=>u.id===t.assignee)?.name}</p><select className="select" value={t.column} onChange={e=>s.moveTask(p.id,t.id,e.target.value)} aria-label={`Move ${t.title}`}>{cols.map(c=><option key={c}>{c}</option>)}</select></div>)}</Card>)}</div><div className="grid grid-2" style={{marginTop:14}}><Card><h2>Milestones</h2>{p.milestones.map(m=><div className="list-item row between" key={m.id}><div><b style={{fontSize:13}}>{m.title}</b><p>{m.status}</p></div><Badge tone="purple">{m.progress}%</Badge></div>)}</Card><Card><h2>Evidence</h2>{p.evidence.map(e=><div className="list-item row between" key={e.id}><span>{e.label}</span><a className="accent" href={e.url} target="_blank" rel="noreferrer"><ExternalLink size={14}/></a></div>)}</Card></div></> }
