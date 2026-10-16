@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import authRoutes from "./routes/authRoutes.js";
 import githubRoutes from "./routes/githubRoutes.js";
 import challengeRoutes from "./routes/challengeRoutes.js";
+import teamForgeRoutes from "./routes/teamForgeRoutes.js";
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/github", githubRoutes);
 app.use("/api/challenges", challengeRoutes);
+app.use("/api/teamforge", teamForgeRoutes);
 
 // Basic API route
 app.get("/", (req, res) => {
