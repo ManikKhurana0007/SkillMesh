@@ -235,9 +235,142 @@ function Profile({ viewId }) {
   const save = () => { s.updateProfile(edit); toast.success('Profile saved and Builder Score recomputed'); };
   const addInterest = () => { const value = interest.trim(); if (value && !edit.interests.includes(value)) setEdit({ ...edit, interests: [...edit.interests, value] }); setInterest(''); };
   const addSkill = () => { if (!skillName.trim()) return; s.upsertSkill({ name: skillName.trim(), level: skillLevel, evidence: skillEvidence.trim() }); setSkillName(''); setSkillEvidence(''); toast.success('Skill saved and Builder Score recomputed'); };
-  const saveGitHub = () => { const value = link.trim(), username = value.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\/$/, ''); if (!/^(https?:\/\/(www\.)?github\.com\/[^/]+\/?|[A-Za-z0-9-]+)$/.test(value)) return setLinkError('Use github.com/<user> or a GitHub username.'); s.saveLinks({ github: { username, repos: 0, commits: 0, stars: 0, languages: 0, topLanguages: [], activity: [], lastSynced: 'Just now', source: 'Unverified', verified: false } }); setLinkError(''); toast.success('GitHub linked'); };
-  const refresh = () => { setRefreshing(true); window.setTimeout(() => { s.refreshLinks('github'); setRefreshing(false); toast.success('GitHub refreshed; score updated'); }, 500); };
-  return <><PageHeader title={own ? 'My profile' : u.name} subtitle="Make your strengths legible with evidence and context." action={own && <Button onClick={save}><Check size={14}/> Save changes</Button>}/><div className="grid grid-2"><Card><h2>About</h2>{own ? <><div className="grid grid-2"><Field label="Education"><FieldInput value={edit.education} onChange={e=>setEdit({...edit,education:e.target.value})}/></Field><Field label="Career goal"><FieldInput value={edit.careerGoal} onChange={e=>setEdit({...edit,careerGoal:e.target.value})}/></Field></div><Field label="Interests"><div className="row"><FieldInput value={interest} onChange={e=>setInterest(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(e.preventDefault(),addInterest())} placeholder="Add an interest"/><Button variant="secondary" onClick={addInterest}><Plus size={14}/></Button></div><div className="row" style={{flexWrap:'wrap',marginTop:7}}>{edit.interests.map(x=><button className="badge badge-purple" key={x} onClick={()=>setEdit({...edit,interests:edit.interests.filter(i=>i!==x)})}>{x} <X size={11}/></button>)}</div></Field><Field label="Preferred roles"><div className="row" style={{flexWrap:'wrap'}}>{roles.map(role=><label className="badge" key={role}><input type="checkbox" checked={edit.preferredRoles.includes(role)} onChange={e=>setEdit({...edit,preferredRoles:e.target.checked?[...edit.preferredRoles,role]:edit.preferredRoles.filter(x=>x!==role)})}/>{role}</label>)}</div></Field></> : <p>{u.education} � {u.careerGoal}</p>}<h2 style={{marginTop:18}}>Skills manager</h2>{own&&<><div className="grid grid-2"><Field label="Search dictionary or enter free text"><FieldInput list="skill-dictionary" value={skillName} onChange={e=>setSkillName(e.target.value)} placeholder="e.g. React"/><datalist id="skill-dictionary">{dictionary.map(x=><option key={x} value={x}/>)}</datalist></Field><Field label="Proficiency"><select className="select" value={skillLevel} onChange={e=>setSkillLevel(e.target.value)}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field></div><div className="row"><FieldInput value={skillEvidence} onChange={e=>setSkillEvidence(e.target.value)} placeholder="Optional evidence URL"/><Button onClick={addSkill}><Plus size={14}/> Add skill</Button></div></>}{(u.skills||[]).map(x=><div className="list-item row between" key={x.name}><div><b style={{fontSize:13}}>{x.name}</b><p>{x.level}{x.evidence?` � ${x.evidence}`:''}</p></div><div className="row">{x.evidence&&<Badge tone="green"><ShieldCheck size={12}/> Verified</Badge>}{own&&<Button variant="danger" onClick={()=>setConfirmRemove(x.name)}>Remove</Button>}</div></div>)}{confirmRemove&&<div className="row" style={{marginTop:10}}><span style={{fontSize:12}}>Remove {confirmRemove}?</span><Button variant="danger" onClick={()=>{s.removeSkill(confirmRemove);setConfirmRemove(null);toast.success('Skill removed; score updated')}}>Confirm</Button><Button variant="secondary" onClick={()=>setConfirmRemove(null)}>Cancel</Button></div>}</Card><Card><div className="row between"><div><h2>Builder Score</h2><p>A transparent signal, not a judgment of worth; never the only factor.</p></div><ScoreBadge user={u}/></div><div className="list" style={{marginTop:14}}>{score.components.map(c=><div key={c.key}><div className="row between"><span className="muted">{c.label} � {Math.round(c.weight*100)}%</span><span className="muted">{c.notLinked?'Not linked':`${c.value}/100`}</span></div><div className="progress"><span style={{width:`${c.value}%`}}/></div></div>)}</div><details style={{marginTop:14}}><summary className="muted">How is this calculated?</summary><p>Builder Score = 25% GitHub Activity + 30% Skill Strength + 20% Project Evidence + 15% Consistency + 10% Profile Quality.</p><p>Tiers: Starter 0�39, Builder 40�64, Contributor 65�84, Pro 85�100.</p></details><h3 style={{marginTop:16}}>How to improve</h3>{score.tips.slice(0,3).map(t=><p key={t}>� {t}</p>)}</Card></div><div className="grid grid-2" style={{marginTop:14}}><Card><div className="row between"><div className="row"><div className="avatar"><Github size={16}/></div><div><h2 style={{margin:0}}>GitHub</h2>{u.github&&<a className="accent" href={`https://github.com/${u.github.username}`} target="_blank" rel="noreferrer">@{u.github.username} <ExternalLink size={11}/></a>}</div></div><Badge tone={u.github?'green':'amber'}>{u.github?(u.github.verified?'Verified':'Unverified'):'Not linked'}</Badge></div>{u.github?<><div className="grid grid-3" style={{margin:'16px 0'}}><div><span className="muted">Repos</span><div className="stat-value">{u.github.repos}</div></div><div><span className="muted">Stars</span><div className="stat-value">{u.github.stars}</div></div><div><span className="muted">Commits</span><div className="stat-value">{u.github.commits}</div></div></div><div style={{height:70}}><ResponsiveContainer><LineChart data={(u.github.activity||[]).map((value,i)=>({i,value}))}><Line type="monotone" dataKey="value" stroke="#6d4aff" strokeWidth={3} dot={false}/><Tooltip/></LineChart></ResponsiveContainer></div><div className="row" style={{flexWrap:'wrap'}}>{(u.github.topLanguages||[]).map(x=><Badge tone="purple" key={x}>{x}</Badge>)}</div><div className="row between" style={{marginTop:16}}><span className="muted">Last synced: {u.github.lastSynced||'Not yet'}</span><div className="row"><Button variant="secondary" onClick={refresh} disabled={refreshing}>{refreshing?'Refreshing�':'Refresh'}</Button><Button variant="secondary" onClick={()=>setLink(u.github.username)}>Edit</Button><Button variant="danger" onClick={()=>{s.saveLinks({github:null});toast.success('GitHub unlinked')}}>Unlink</Button></div></div></>:<><p>Link GitHub to enrich your score with real activity.</p><Field label="Username or profile URL"><FieldInput value={link} onChange={e=>{setLink(e.target.value);setLinkError('')}} placeholder="github.com/username"/></Field>{linkError&&<p style={{color:'#b91c1c'}}>{linkError}</p>}<Button onClick={saveGitHub}>Link GitHub</Button></>}</Card><Card><h2>Profile evidence</h2><p>Project evidence, activity consistency, and profile completeness contribute to the score. Keep your profile current and attach evidence links to skills.</p><div className="row" style={{flexWrap:'wrap',marginTop:12}}>{(u.interests||[]).map(x=><Badge tone="purple" key={x}>{x}</Badge>)}</div></Card></div><Card style={{marginTop:14}}><h2>Weekly availability</h2><div className="grid grid-4">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><div className="row" key={d}><span style={{width:28,fontSize:11}}>{d}</span>{['AM','PM','Eve'].map(t=><Badge key={t} tone={d==='Tue'||t==='Eve'?'purple':''}>{t}</Badge>)}</div>)}</div></Card></>;
+  
+  
+const syncGitHub = async (username) => {
+  setRefreshing(true);
+
+  try {
+    // Fetch profile and repositories from your backend.
+   
+const [profileResponse, repoResponse, commitsResponse] =
+  await Promise.all([
+    service.getGitHubProfile(username),
+    service.getGitHubRepositories(username),
+    service.getGitHubCommits(username),
+  ]);
+
+
+    // Your backend r eturns { profile: {...} }.
+    const profile = profileResponse?.profile;
+
+    // Your backend returns { username, count, repositories: [...] }.
+    const repositories = Array.isArray(repoResponse?.repositories)
+      ? repoResponse.repositories
+      : [];
+
+    if (!profile || !Array.isArray(repoResponse?.repositories)) {
+      throw new Error("Unexpected GitHub API response format.");
+    }
+
+    // Backend repository objects use "stars", not "stargazers_count".
+    const stars = repositories.reduce(
+      (total, repo) => total + (Number(repo.stars) || 0),
+      0
+    );
+
+    // Collect unique programming languages.
+    const topLanguages = [
+      ...new Set(
+        repositories
+          .map((repo) => repo.language)
+          .filter(Boolean)
+      ),
+    ];
+
+    // Your backend uses "username", not "login".
+    const githubUsername = profile.username || username;
+
+    // Save the actual profile and repository statistics.
+    s.saveLinks({
+      github: {
+        username: githubUsername,
+        repos: Number(profile.publicRepositories) || Number(repoResponse.count) || repositories.length,
+        commits: Number(commitsResponse?.commits) || 0,
+        stars,
+        languages: topLanguages.length,
+        topLanguages,
+        activity: [],
+        lastSynced: new Date().toLocaleString(),
+        source: "GitHub API",
+        verified: true,
+        avatarUrl: profile.avatarUrl || "",
+        bio: profile.bio || "",
+        followers: Number(profile.followers) || 0,
+        following: Number(profile.following) || 0,
+        publicProfileUrl:
+          profile.profileUrl ||
+          `https://github.com/${githubUsername}`,
+      },
+    });
+
+    setLink(githubUsername);
+    setLinkError("");
+
+    toast.success("GitHub profile and repository statistics synced!");
+  } catch (error) {
+    console.error("GitHub sync error:", error);
+
+    toast.error(
+      error.response?.data?.message ||
+      error.message ||
+      "Unable to fetch GitHub data. Check your username and backend."
+    );
+  } finally {
+    setRefreshing(false);
+  }
+};
+
+
+  const saveGitHub = async () => {
+    const value = link.trim();
+    let username = value;
+
+    // Accept a username or a GitHub profile URL.
+    if (/^https?:\/\//i.test(value)) {
+      try {
+        const url = new URL(value);
+        const hostname = url.hostname.toLowerCase();
+        const parts = url.pathname.split("/").filter(Boolean);
+
+        if (
+          !["github.com", "www.github.com"].includes(hostname) ||
+          parts.length !== 1
+        ) {
+          setLinkError(
+            "Enter a GitHub username or a profile URL like https://github.com/octocat."
+          );
+          return;
+        }
+
+        username = parts[0];
+      } catch {
+        setLinkError("Enter a valid GitHub username or profile URL.");
+        return;
+      }
+    }
+
+    if (
+      username.length > 39 ||
+      !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(username) ||
+      username.includes("--")
+    ) {
+      setLinkError("Enter a valid GitHub username.");
+      return;
+    }
+
+    await syncGitHub(username);
+  };
+
+  const refresh = async () => {
+    if (!u.github?.username) {
+      toast.error("Link your GitHub account first.");
+      return;
+    }
+
+    await syncGitHub(u.github.username);
+  };
+ return <><PageHeader title={own ? 'My profile' : u.name} subtitle="Make your strengths legible with evidence and context." action={own && <Button onClick={save}><Check size={14}/> Save changes</Button>}/><div className="grid grid-2"><Card><h2>About</h2>{own ? <><div className="grid grid-2"><Field label="Education"><FieldInput value={edit.education} onChange={e=>setEdit({...edit,education:e.target.value})}/></Field><Field label="Career goal"><FieldInput value={edit.careerGoal} onChange={e=>setEdit({...edit,careerGoal:e.target.value})}/></Field></div><Field label="Interests"><div className="row"><FieldInput value={interest} onChange={e=>setInterest(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(e.preventDefault(),addInterest())} placeholder="Add an interest"/><Button variant="secondary" onClick={addInterest}><Plus size={14}/></Button></div><div className="row" style={{flexWrap:'wrap',marginTop:7}}>{edit.interests.map(x=><button className="badge badge-purple" key={x} onClick={()=>setEdit({...edit,interests:edit.interests.filter(i=>i!==x)})}>{x} <X size={11}/></button>)}</div></Field><Field label="Preferred roles"><div className="row" style={{flexWrap:'wrap'}}>{roles.map(role=><label className="badge" key={role}><input type="checkbox" checked={edit.preferredRoles.includes(role)} onChange={e=>setEdit({...edit,preferredRoles:e.target.checked?[...edit.preferredRoles,role]:edit.preferredRoles.filter(x=>x!==role)})}/>{role}</label>)}</div></Field></> : <p>{u.education} � {u.careerGoal}</p>}<h2 style={{marginTop:18}}>Skills manager</h2>{own&&<><div className="grid grid-2"><Field label="Search dictionary or enter free text"><FieldInput list="skill-dictionary" value={skillName} onChange={e=>setSkillName(e.target.value)} placeholder="e.g. React"/><datalist id="skill-dictionary">{dictionary.map(x=><option key={x} value={x}/>)}</datalist></Field><Field label="Proficiency"><select className="select" value={skillLevel} onChange={e=>setSkillLevel(e.target.value)}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field></div><div className="row"><FieldInput value={skillEvidence} onChange={e=>setSkillEvidence(e.target.value)} placeholder="Optional evidence URL"/><Button onClick={addSkill}><Plus size={14}/> Add skill</Button></div></>}{(u.skills||[]).map(x=><div className="list-item row between" key={x.name}><div><b style={{fontSize:13}}>{x.name}</b><p>{x.level}{x.evidence?` � ${x.evidence}`:''}</p></div><div className="row">{x.evidence&&<Badge tone="green"><ShieldCheck size={12}/> Verified</Badge>}{own&&<Button variant="danger" onClick={()=>setConfirmRemove(x.name)}>Remove</Button>}</div></div>)}{confirmRemove&&<div className="row" style={{marginTop:10}}><span style={{fontSize:12}}>Remove {confirmRemove}?</span><Button variant="danger" onClick={()=>{s.removeSkill(confirmRemove);setConfirmRemove(null);toast.success('Skill removed; score updated')}}>Confirm</Button><Button variant="secondary" onClick={()=>setConfirmRemove(null)}>Cancel</Button></div>}</Card><Card><div className="row between"><div><h2>Builder Score</h2><p>A transparent signal, not a judgment of worth; never the only factor.</p></div><ScoreBadge user={u}/></div><div className="list" style={{marginTop:14}}>{score.components.map(c=><div key={c.key}><div className="row between"><span className="muted">{c.label} � {Math.round(c.weight*100)}%</span><span className="muted">{c.notLinked?'Not linked':`${c.value}/100`}</span></div><div className="progress"><span style={{width:`${c.value}%`}}/></div></div>)}</div><details style={{marginTop:14}}><summary className="muted">How is this calculated?</summary><p>Builder Score = 25% GitHub Activity + 30% Skill Strength + 20% Project Evidence + 15% Consistency + 10% Profile Quality.</p><p>Tiers: Starter 0�39, Builder 40�64, Contributor 65�84, Pro 85�100.</p></details><h3 style={{marginTop:16}}>How to improve</h3>{score.tips.slice(0,3).map(t=><p key={t}>� {t}</p>)}</Card></div><div className="grid grid-2" style={{marginTop:14}}><Card><div className="row between"><div className="row"><div className="avatar"><Github size={16}/></div><div><h2 style={{margin:0}}>GitHub</h2>{u.github&&<a className="accent" href={`https://github.com/${u.github.username}`} target="_blank" rel="noreferrer">@{u.github.username} <ExternalLink size={11}/></a>}</div></div><Badge tone={u.github?'green':'amber'}>{u.github?(u.github.verified?'Verified':'Unverified'):'Not linked'}</Badge></div>{u.github?<><div className="grid grid-3" style={{margin:'16px 0'}}><div><span className="muted">Repos</span><div className="stat-value">{u.github.repos}</div></div><div><span className="muted">Stars</span><div className="stat-value">{u.github.stars}</div></div><div><span className="muted">Commits</span><div className="stat-value">{u.github.commits}</div></div></div><div style={{height:70}}><ResponsiveContainer><LineChart data={(u.github.activity||[]).map((value,i)=>({i,value}))}><Line type="monotone" dataKey="value" stroke="#6d4aff" strokeWidth={3} dot={false}/><Tooltip/></LineChart></ResponsiveContainer></div><div className="row" style={{flexWrap:'wrap'}}>{(u.github.topLanguages||[]).map(x=><Badge tone="purple" key={x}>{x}</Badge>)}</div><div className="row between" style={{marginTop:16}}><span className="muted">Last synced: {u.github.lastSynced||'Not yet'}</span><div className="row"><Button variant="secondary" onClick={refresh} disabled={refreshing}>{refreshing?'Refreshing�':'Refresh'}</Button><Button variant="secondary" onClick={()=>setLink(u.github.username)}>Edit</Button><Button variant="danger" onClick={()=>{s.saveLinks({github:null});toast.success('GitHub unlinked')}}>Unlink</Button></div></div></>:<><p>Link GitHub to enrich your score with real activity.</p><Field label="Username or profile URL"><FieldInput value={link} onChange={e=>{setLink(e.target.value);setLinkError('')}} placeholder="github.com/username"/></Field>{linkError&&<p style={{color:'#b91c1c'}}>{linkError}</p>}<Button onClick={saveGitHub}>Link GitHub</Button></>}</Card><Card><h2>Profile evidence</h2><p>Project evidence, activity consistency, and profile completeness contribute to the score. Keep your profile current and attach evidence links to skills.</p><div className="row" style={{flexWrap:'wrap',marginTop:12}}>{(u.interests||[]).map(x=><Badge tone="purple" key={x}>{x}</Badge>)}</div></Card></div><Card style={{marginTop:14}}><h2>Weekly availability</h2><div className="grid grid-4">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><div className="row" key={d}><span style={{width:28,fontSize:11}}>{d}</span>{['AM','PM','Eve'].map(t=><Badge key={t} tone={d==='Tue'||t==='Eve'?'purple':''}>{t}</Badge>)}</div>)}</div></Card></>;
 }
 function Goals() { const s=useStore(),u=currentUser(s),[title,setTitle]=useState('');return <><PageHeader title="Goals" subtitle="Turn intent into visible momentum." action={<div className="row"><FieldInput value={title} onChange={e=>setTitle(e.target.value)} placeholder="New goal title"/><Button onClick={()=>{if(title){s.addGoal({title,targetDate:'2026-11-15',priority:'Medium',status:'In progress'});setTitle('');toast.success('Goal added')}}}><Plus size={14}/> Add</Button></div>}/><div className="grid grid-3">{s.goals.filter(x=>x.userId===u.id).map(g=><Card key={g.id}><div className="row between"><Badge tone={g.priority==='High'?'red':'purple'}>{g.priority}</Badge><span className="muted">{g.targetDate}</span></div><h2 style={{marginTop:14}}>{g.title}</h2><div className="progress"><span style={{width:`${g.progress}%`}}/></div><div className="row between" style={{marginTop:8}}><span className="muted">{g.status}</span><b style={{fontSize:12}}>{g.progress}%</b></div></Card>)}</div></> }
 function Activities() { const s=useStore(),u=currentUser(s),[type,setType]=useState('coding'),[duration,setDuration]=useState(45);return <><PageHeader title="Activity log" subtitle="Consistency beats intensity. Keep the record honest."/><div className="grid grid-3"><Card><h2>Log activity</h2><Field label="Type"><select className="select" value={type} onChange={e=>setType(e.target.value)}><option>coding</option><option>course</option><option>project</option><option>practice</option></select></Field><Field label="Duration (minutes)"><FieldInput type="number" value={duration} onChange={e=>setDuration(e.target.value)}/></Field><Button onClick={()=>{s.addActivity({type,duration:Number(duration),date:'2026-10-15',notes:'Focused practice session'});toast.success('Activity logged')}}><Plus size={14}/> Save activity</Button></Card><Card><h2>Consistency</h2><div className="stat-value">8 day streak</div><p>Weekly total 8.5 hours · 86% consistency</p><div className="progress"><span style={{width:'72%'}}/></div></Card><Card><h2>Weekly hours</h2><div style={{height:130}}><ResponsiveContainer><BarChart data={[{d:'M',h:1.5},{d:'T',h:2},{d:'W',h:.5},{d:'T',h:2.5},{d:'F',h:1}]}><XAxis dataKey="d"/><Bar dataKey="h" fill="#6d4aff"/></BarChart></ResponsiveContainer></div></Card></div><Card style={{marginTop:14}}><h2>Recent activity</h2>{s.activities.filter(x=>x.userId===u.id).map(a=><div className="list-item row between" key={a.id}><div><Badge tone="purple">{a.type}</Badge><span style={{marginLeft:10,fontSize:13}}>{a.notes}</span></div><span className="muted">{a.date} · {a.duration}m</span></div>)}</Card></> }
