@@ -71,6 +71,21 @@ getChallengeTeammates: async (id) => {
   return response.data;
 },
 
+getInvitations: async () => {
+  const response = await api.get("/challenges/invitations");
+  return response.data;
+},
+
+sendInvitation: async (challengeId, data) => {
+  const response = await api.post(`/challenges/${encodeURIComponent(challengeId)}/invitations`, data);
+  return response.data;
+},
+
+respondToInvitation: async (invitationId, status) => {
+  const response = await api.patch(`/challenges/invitations/${encodeURIComponent(invitationId)}`, { status });
+  return response.data;
+},
+
 createChallenge: async (data) => {
   const response = await api.post("/challenges", data);
   return response.data;
