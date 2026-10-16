@@ -66,6 +66,11 @@ joinChallenge: async (id) => {
   return response.data;
 },
 
+getChallengeTeammates: async (id) => {
+  const response = await api.get(`/challenges/${encodeURIComponent(id)}/teammates`);
+  return response.data;
+},
+
 createChallenge: async (data) => {
   const response = await api.post("/challenges", data);
   return response.data;
@@ -78,6 +83,56 @@ updateChallenge: async (id, data) => {
 
 publishChallenge: async (id) => {
   const response = await api.post(`/challenges/${encodeURIComponent(id)}/publish`);
+  return response.data;
+},
+
+getFormationConfig: async (challengeId) => {
+  const response = await api.get(`/teamforge/challenges/${encodeURIComponent(challengeId)}/formation-config`);
+  return response.data;
+},
+
+updateFormationConfig: async (challengeId, data) => {
+  const response = await api.patch(`/teamforge/challenges/${encodeURIComponent(challengeId)}/formation-config`, data);
+  return response.data;
+},
+
+generateFormationRun: async (challengeId, data) => {
+  const response = await api.post(`/teamforge/challenges/${encodeURIComponent(challengeId)}/formation-runs`, data);
+  return response.data;
+},
+
+getFormationRun: async (runId) => {
+  const response = await api.get(`/teamforge/formation-runs/${encodeURIComponent(runId)}`);
+  return response.data;
+},
+
+approveFormationAlternative: async (runId, data) => {
+  const response = await api.post(`/teamforge/formation-runs/${encodeURIComponent(runId)}/approve`, data);
+  return response.data;
+},
+
+createProjectTask: async (projectId, data) => {
+  const response = await api.post(`/teamforge/projects/${encodeURIComponent(projectId)}/tasks`, data);
+  return response.data;
+},
+
+createDisruption: async (projectId, data) => {
+  const response = await api.post(`/teamforge/projects/${encodeURIComponent(projectId)}/disruptions`, data);
+  return response.data;
+},
+
+getDisruption: async (scenarioId) => {
+  const response = await api.get(`/teamforge/disruptions/${encodeURIComponent(scenarioId)}`);
+  return response.data;
+},
+
+approveRecoveryPlan: async (planId, data = {}) => {
+  const response = await api.post(`/teamforge/recovery-plans/${encodeURIComponent(planId)}/approve`, data);
+  return response.data;
+},
+
+rejectRecoveryPlan: async (planId, data) => {
+  const response = await api.post(`/teamforge/recovery-plans/${encodeURIComponent(planId)}/reject`, data);
   return response.data;
 },
 

@@ -3,8 +3,277 @@ generator client {
   output   = "../generated/prisma"
 }
 
+model TeamInvitation {
+  id          String           @id @default(cuid())
+  teamId      String
+  senderId    String
+  recipientId String
+  message     String?
+  status      InvitationStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  respondedAt DateTime?
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sender User @relation("InvitationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("InvitationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  @@unique([teamId, recipientId])
+}
+
+enum TeamStatus {
+  FORMING
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum FormationRunStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+}
+
+enum DisruptionType {
+  MEMBER_UNAVAILABLE
+  BLOCKED_TASK
+  OVERDUE_TASK
+  MILESTONE_AT_RISK
+  OWNER_REPLACEMENT
+  CAPACITY_SHORTFALL
+  SCOPE_REDUCTION
+}
+
+enum RecoveryPlanStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  APPLIED
+  SUPERSEDED
+}
+
 datasource db {
   provider = "postgresql"
+}
+
+model Team {
+  id          String     @id @default(cuid())
+  challengeId String
+  name        String
+  description String?
+  leaderId    String
+  status      TeamStatus @default(FORMING)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  leader User @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+  invitations TeamInvitation[]
+  project Project?
+  @@unique([challengeId, name])
+  @@unique([challengeId, leaderId])
+  @@index([challengeId, status])
+}
+
+model TeamMember {
+  id          String   @id @default(cuid())
+  teamId      String
+  challengeId String
+  userId      String
+  role        String?
+  weeklyCapacity Int?
+  joinedAt    DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([challengeId, userId])
+  @@unique([teamId, userId])
+  @@index([teamId])
+}
+
+model ParticipantConstraint {
+  id             String   @id @default(cuid())
+  challengeId    String
+  userId         String
+  weeklyCapacity Int      @default(0)
+  available      Boolean  @default(true)
+  notes          String?
+  updatedAt      DateTime @updatedAt
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership ChallengeMember? @relation(fields: [challengeId, userId], references: [challengeId, userId])
+  @@unique([challengeId, userId])
+}
+
+model FormationRun {
+  id          String             @id @default(cuid())
+  challengeId String
+  createdById String
+  algorithm   String
+  config      Json
+  status      FormationRunStatus @default(DRAFT)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  createdBy User @relation("FormationRunCreator", fields: [createdById], references: [id])
+  alternatives FormationAlternative[]
+  audits FormationAudit[]
+  @@index([challengeId, createdAt])
+}
+
+model FormationAlternative {
+  id          String   @id @default(cuid())
+  runId       String
+  rank        Int
+  score       Float
+  feasible    Boolean
+  memberIds   Json
+  evaluation  Json
+  createdAt   DateTime @default(now())
+
+  run FormationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  @@unique([runId, rank])
+}
+
+model FormationAudit {
+  id          String   @id @default(cuid())
+  runId       String
+  actorId     String
+  action      String
+  reason      String?
+  snapshot    Json
+  createdAt   DateTime @default(now())
+
+  run FormationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id])
+  @@index([runId, createdAt])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  teamId      String        @unique
+  createdById String
+  name        String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdBy User @relation("ProjectCreator", fields: [createdById], references: [id])
+  tasks Task[]
+  milestones Milestone[]
+  disruptions DisruptionScenario[]
+}
+
+model Task {
+  id              String     @id @default(cuid())
+  projectId       String
+  ownerId         String?
+  title           String
+  description     String?
+  status          TaskStatus @default(TODO)
+  estimateHours   Int        @default(0)
+  completedHours  Int        @default(0)
+  dueAt           DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner User? @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  dependencies TaskDependency[] @relation("TaskDependencies")
+  dependents TaskDependency[] @relation("TaskDependents")
+  recoveryChanges RecoveryTaskChange[]
+  @@index([projectId, status])
+}
+
+model TaskDependency {
+  id            String @id @default(cuid())
+  predecessorId String
+  successorId   String
+
+  predecessor Task @relation("TaskDependents", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor Task @relation("TaskDependencies", fields: [successorId], references: [id], onDelete: Cascade)
+  @@unique([predecessorId, successorId])
+}
+
+model Milestone {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String
+  dueAt     DateTime
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model DisruptionScenario {
+  id        String         @id @default(cuid())
+  projectId String
+  createdById String
+  type      DisruptionType
+  taskId    String?
+  memberId  String?
+  details   Json
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User @relation("DisruptionCreator", fields: [createdById], references: [id])
+  plans RecoveryPlan[]
+}
+
+model RecoveryPlan {
+  id          String             @id @default(cuid())
+  scenarioId  String
+  reviewedById String?
+  algorithm   String
+  rank        Int
+  feasible    Boolean
+  status      RecoveryPlanStatus @default(PROPOSED)
+  summary     Json
+  reason      String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  scenario DisruptionScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("RecoveryReviewer", fields: [reviewedById], references: [id])
+  changes RecoveryTaskChange[]
+  @@unique([scenarioId, rank])
+}
+
+model RecoveryTaskChange {
+  id              String @id @default(cuid())
+  planId          String
+  taskId          String
+  previousOwnerId String?
+  proposedOwnerId String?
+  previousStatus  TaskStatus?
+  proposedStatus  TaskStatus?
+  plan RecoveryPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 }
 
 enum UserRole {
@@ -22,6 +291,17 @@ model User {
   profile StudentProfile?
 organizedChallenges Challenge[] @relation("OrganizerChallenges")
 challengeMemberships ChallengeMember[]
+teamsLed Team[] @relation("TeamLeader")
+teamMemberships TeamMember[]
+sentTeamInvitations TeamInvitation[] @relation("InvitationSender")
+receivedTeamInvitations TeamInvitation[] @relation("InvitationRecipient")
+createdFormationRuns FormationRun[] @relation("FormationRunCreator")
+createdProjects Project[] @relation("ProjectCreator")
+assignedTasks Task[] @relation("TaskOwner")
+createdDisruptions DisruptionScenario[] @relation("DisruptionCreator")
+reviewedRecoveryPlans RecoveryPlan[] @relation("RecoveryReviewer")
+participantConstraints ParticipantConstraint[]
+formationAudits FormationAudit[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -91,12 +371,17 @@ model Challenge {
   organizer User             @relation("OrganizerChallenges", fields: [organizerId], references: [id], onDelete: Cascade)
   requiredSkills ChallengeSkill[]
   memberships ChallengeMember[]
+  teamMembers TeamMember[]
+  teams Team[]
+  formationRuns FormationRun[]
+  participantConstraints ParticipantConstraint[]
 }
 
 model ChallengeSkill {
   id          String @id @default(cuid())
   challengeId String
   skillId     String
+  weight      Float  @default(1)
 
   challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   skill     Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
@@ -112,6 +397,7 @@ model ChallengeMember {
 
   challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  constraint ParticipantConstraint?
 
   @@unique([challengeId, userId])
 }

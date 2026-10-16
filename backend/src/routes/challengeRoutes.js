@@ -182,6 +182,88 @@ router.post("/:id/join", allowRoles("STUDENT"), async (req, res) => {
   }
 });
 
+router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
+  try {
+    const challenge = await prisma.challenge.findFirst({
+      where: {
+        id: req.params.id,
+        status: "PUBLISHED",
+        deadline: { gt: new Date() },
+        memberships: { some: { userId: req.user.id } },
+      },
+      include: {
+        requiredSkills: { include: { skill: { select: { id: true, name: true } } } },
+        memberships: {
+          where: { userId: { not: req.user.id } },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                profile: {
+                  include: {
+                    skills: {
+                      include: { skill: { select: { id: true, name: true } } },
+                    },
+                  },
+                },
+              },
+            },
+            constraint: true,
+          },
+        },
+        teamMembers: { select: { userId: true } },
+      },
+    });
+
+    if (!challenge) {
+      return res.status(403).json({
+        error: {
+          code: "CHALLENGE_MEMBERSHIP_REQUIRED",
+          message: "Join this published challenge before finding teammates.",
+        },
+      });
+    }
+
+    const assignedUserIds = new Set(challenge.teamMembers.map(({ userId }) => userId));
+    const candidates = challenge.memberships
+      .filter(({ user }) => !assignedUserIds.has(user.id))
+      .map(({ user, constraint }) => ({
+        id: user.id,
+        name: user.name,
+        headline: user.profile?.headline || "",
+        bio: user.profile?.bio || "",
+        available: constraint?.available !== false,
+        weeklyCapacity: constraint?.weeklyCapacity || 0,
+        skills: user.profile?.skills.map(({ skill, proficiency, evidenceUrl }) => ({
+          id: skill.id,
+          name: skill.name,
+          proficiency,
+          evidenceUrl,
+        })) || [],
+      }));
+
+    return res.json({
+      challenge: {
+        id: challenge.id,
+        title: challenge.title,
+        teamSize: challenge.teamSize,
+        deadline: challenge.deadline,
+        requiredSkills: challenge.requiredSkills.map(({ skill, weight }) => ({ ...skill, weight })),
+      },
+      candidates,
+    });
+  } catch (error) {
+    console.error("Teammate listing failed:", error.message);
+    return res.status(500).json({
+      error: {
+        code: "TEAMMATES_UNAVAILABLE",
+        message: "Could not load teammates for this challenge.",
+      },
+    });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const challenge = await prisma.challenge.findFirst({
