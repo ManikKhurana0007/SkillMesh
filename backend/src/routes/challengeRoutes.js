@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { allowRoles, requireAuth } from "../middleware/authMiddleware.js";
 
@@ -194,7 +195,19 @@ router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
       include: {
         requiredSkills: { include: { skill: { select: { id: true, name: true } } } },
         memberships: {
-          where: { userId: { not: req.user.id } },
+          where: {
+            userId: { not: req.user.id },
+            user: {
+              teamMemberships: {
+                none: {
+                  challengeId: req.params.id,
+                  team: {
+                    status: { in: ["FORMING", "SUBMITTED", "APPROVED"] },
+                  },
+                },
+              },
+            },
+          },
           include: {
             user: {
               select: {
@@ -212,7 +225,6 @@ router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
             constraint: true,
           },
         },
-        teamMembers: { select: { userId: true } },
       },
     });
 
@@ -225,10 +237,7 @@ router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
       });
     }
 
-    const assignedUserIds = new Set(challenge.teamMembers.map(({ userId }) => userId));
-    const candidates = challenge.memberships
-      .filter(({ user }) => !assignedUserIds.has(user.id))
-      .map(({ user, constraint }) => ({
+    const candidates = challenge.memberships.map(({ user, constraint }) => ({
         id: user.id,
         name: user.name,
         headline: user.profile?.headline || "",
@@ -260,6 +269,323 @@ router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
         code: "TEAMMATES_UNAVAILABLE",
         message: "Could not load teammates for this challenge.",
       },
+    });
+  }
+});
+
+const invitationInput = z.object({
+  recipientId: z.string().min(1),
+  message: z.string().trim().max(1000).optional(),
+});
+
+function serializeInvitation(invitation) {
+  return {
+    id: invitation.id,
+    status: invitation.status,
+    message: invitation.message,
+    createdAt: invitation.createdAt,
+    respondedAt: invitation.respondedAt,
+    team: {
+      id: invitation.team.id,
+      name: invitation.team.name,
+      status: invitation.team.status,
+      challenge: {
+        id: invitation.team.challenge.id,
+        title: invitation.team.challenge.title,
+      },
+    },
+    sender: invitation.sender,
+    recipient: invitation.recipient,
+  };
+}
+
+const invitationInclude = {
+  team: {
+    include: {
+      challenge: { select: { id: true, title: true } },
+    },
+  },
+  sender: { select: { id: true, name: true } },
+  recipient: { select: { id: true, name: true } },
+};
+
+router.get("/invitations", allowRoles("STUDENT"), async (req, res) => {
+  try {
+    const [received, sent] = await Promise.all([
+      prisma.teamInvitation.findMany({
+        where: { recipientId: req.user.id },
+        include: invitationInclude,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.teamInvitation.findMany({
+        where: { senderId: req.user.id },
+        include: invitationInclude,
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    return res.json({
+      received: received.map(serializeInvitation),
+      sent: sent.map(serializeInvitation),
+    });
+  } catch (error) {
+    console.error("Invitation listing failed:", error.message);
+    return res.status(500).json({
+      error: { code: "INVITATIONS_UNAVAILABLE", message: "Could not load invitations." },
+    });
+  }
+});
+
+router.post("/:id/invitations", allowRoles("STUDENT"), async (req, res) => {
+  const parsed = invitationInput.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: { code: "INVALID_INVITATION", message: parsed.error.issues[0].message },
+    });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const challenge = await tx.challenge.findFirst({
+        where: {
+          id: req.params.id,
+          status: "PUBLISHED",
+          deadline: { gt: new Date() },
+          memberships: { some: { userId: req.user.id } },
+        },
+        select: { id: true, title: true, teamSize: true },
+      });
+      if (!challenge) {
+        return {
+          status: 403,
+          body: {
+            error: {
+              code: "CHALLENGE_MEMBERSHIP_REQUIRED",
+              message: "Join this challenge before sending invitations.",
+            },
+          },
+        };
+      }
+      if (parsed.data.recipientId === req.user.id) {
+        return {
+          status: 400,
+          body: { error: { code: "SELF_INVITATION", message: "You cannot invite yourself." } },
+        };
+      }
+
+      const recipientMembership = await tx.challengeMember.findUnique({
+        where: {
+          challengeId_userId: {
+            challengeId: challenge.id,
+            userId: parsed.data.recipientId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!recipientMembership) {
+        return {
+          status: 400,
+          body: {
+            error: {
+              code: "RECIPIENT_NOT_JOINED",
+              message: "You can only invite students who joined this challenge.",
+            },
+          },
+        };
+      }
+
+      const recipientTeam = await tx.teamMember.findFirst({
+        where: {
+          challengeId: challenge.id,
+          userId: parsed.data.recipientId,
+          team: { status: { in: ["FORMING", "SUBMITTED", "APPROVED"] } },
+        },
+        select: { id: true },
+      });
+      if (recipientTeam) {
+        return {
+          status: 409,
+          body: {
+            error: {
+              code: "RECIPIENT_ALREADY_ASSIGNED",
+              message: "This student is already assigned to a team.",
+            },
+          },
+        };
+      }
+
+      let team = await tx.team.findFirst({
+        where: {
+          challengeId: challenge.id,
+          leaderId: req.user.id,
+          status: { in: ["FORMING", "SUBMITTED"] },
+        },
+        include: { members: true },
+      });
+      if (!team) {
+        const existingMembership = await tx.teamMember.findFirst({
+          where: {
+            challengeId: challenge.id,
+            userId: req.user.id,
+            team: { status: { in: ["FORMING", "SUBMITTED", "APPROVED"] } },
+          },
+          include: { team: { include: { members: true } } },
+        });
+        if (existingMembership && existingMembership.team.leaderId !== req.user.id) {
+          return {
+            status: 403,
+            body: {
+              error: {
+                code: "TEAM_LEADER_REQUIRED",
+                message: "Only the team leader can send team invitations.",
+              },
+            },
+          };
+        }
+        team = existingMembership?.team || null;
+      }
+      if (!team) {
+        team = await tx.team.create({
+          data: {
+            challengeId: challenge.id,
+            name: `${req.user.name}'s team`,
+            leaderId: req.user.id,
+            status: "FORMING",
+            members: {
+              create: {
+                challengeId: challenge.id,
+                userId: req.user.id,
+              },
+            },
+          },
+          include: { members: true },
+        });
+      }
+      if (team.members.length >= challenge.teamSize) {
+        return {
+          status: 409,
+          body: { error: { code: "TEAM_FULL", message: "Your team has reached its maximum size." } },
+        };
+      }
+
+      const existingInvitation = await tx.teamInvitation.findUnique({
+        where: {
+          teamId_recipientId: {
+            teamId: team.id,
+            recipientId: parsed.data.recipientId,
+          },
+        },
+        select: { id: true, status: true },
+      });
+      if (existingInvitation?.status === "PENDING") {
+        return {
+          status: 409,
+          body: { error: { code: "INVITATION_EXISTS", message: "A pending invitation already exists." } },
+        };
+      }
+
+      const invitation = existingInvitation
+        ? await tx.teamInvitation.update({
+          where: { id: existingInvitation.id },
+          data: { senderId: req.user.id, message: parsed.data.message, status: "PENDING", respondedAt: null },
+          include: invitationInclude,
+        })
+        : await tx.teamInvitation.create({
+          data: {
+            teamId: team.id,
+            senderId: req.user.id,
+            recipientId: parsed.data.recipientId,
+            message: parsed.data.message,
+          },
+          include: invitationInclude,
+        });
+      return { status: 201, body: { invitation: serializeInvitation(invitation) } };
+    });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error("Invitation creation failed:", error.message);
+    return res.status(500).json({
+      error: { code: "INVITATION_CREATE_FAILED", message: "Could not send the invitation." },
+    });
+  }
+});
+
+router.patch("/invitations/:invitationId", allowRoles("STUDENT"), async (req, res) => {
+  const parsed = z.object({ status: z.enum(["ACCEPTED", "REJECTED"]) }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: { code: "INVALID_INVITATION_STATUS", message: "Invitation status must be ACCEPTED or REJECTED." },
+    });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const invitation = await tx.teamInvitation.findUnique({
+        where: { id: req.params.invitationId },
+        include: {
+          team: { include: { members: true } },
+        },
+      });
+      if (!invitation || invitation.recipientId !== req.user.id) {
+        return {
+          status: 404,
+          body: { error: { code: "INVITATION_NOT_FOUND", message: "Invitation not found." } },
+        };
+      }
+      if (invitation.status !== "PENDING") {
+        return {
+          status: 409,
+          body: { error: { code: "INVITATION_RESOLVED", message: "This invitation has already been resolved." } },
+        };
+      }
+      if (parsed.data.status === "REJECTED") {
+        const rejected = await tx.teamInvitation.update({
+          where: { id: invitation.id },
+          data: { status: "REJECTED", respondedAt: new Date() },
+          include: invitationInclude,
+        });
+        return { status: 200, body: { invitation: serializeInvitation(rejected) } };
+      }
+
+      const currentTeam = await tx.teamMember.findFirst({
+        where: {
+          challengeId: invitation.team.challengeId,
+          userId: req.user.id,
+          team: { status: { in: ["FORMING", "SUBMITTED", "APPROVED"] } },
+        },
+        select: { id: true },
+      });
+      if (currentTeam) {
+        return {
+          status: 409,
+          body: { error: { code: "ALREADY_ASSIGNED", message: "You are already assigned to a team for this challenge." } },
+        };
+      }
+      if (invitation.team.status === "APPROVED" || invitation.team.members.length >= (await tx.challenge.findUnique({ where: { id: invitation.team.challengeId }, select: { teamSize: true } })).teamSize) {
+        return {
+          status: 409,
+          body: { error: { code: "TEAM_FULL", message: "This team cannot accept another member." } },
+        };
+      }
+
+      await tx.teamMember.create({
+        data: {
+          teamId: invitation.teamId,
+          challengeId: invitation.team.challengeId,
+          userId: req.user.id,
+        },
+      });
+      const accepted = await tx.teamInvitation.update({
+        where: { id: invitation.id },
+        data: { status: "ACCEPTED", respondedAt: new Date() },
+        include: invitationInclude,
+      });
+      return { status: 200, body: { invitation: serializeInvitation(accepted) } };
+    });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error("Invitation response failed:", error.message);
+    return res.status(500).json({
+      error: { code: "INVITATION_RESPONSE_FAILED", message: "Could not update the invitation." },
     });
   }
 });
