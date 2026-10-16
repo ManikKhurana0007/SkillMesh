@@ -20,7 +20,98 @@ model User {
   passwordHash String
   role         UserRole @default(STUDENT)
   profile StudentProfile?
-
+organizedChallenges Challenge[] @relation("OrganizerChallenges")
+challengeMemberships ChallengeMember[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+
+enum ChallengeStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum SkillProficiency {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model StudentProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  headline       String?
+  bio            String?
+  university     String?
+  degree         String?
+  graduationYear Int?
+  githubUrl      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skills UserSkill[]
+}
+
+model Skill {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  createdAt DateTime    @default(now())
+  users     UserSkill[]
+  challenges ChallengeSkill[]
+}
+
+model UserSkill {
+  id            String           @id @default(cuid())
+  profileId     String
+  skillId       String
+  proficiency   SkillProficiency @default(BEGINNER)
+  evidenceUrl   String?
+  createdAt     DateTime         @default(now())
+
+  profile StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skill   Skill          @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, skillId])
+}
+
+model Challenge {
+  id          String          @id @default(cuid())
+  title       String
+  description String
+  deadline    DateTime
+  teamSize    Int
+  status      ChallengeStatus @default(DRAFT)
+  organizerId String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  organizer User             @relation("OrganizerChallenges", fields: [organizerId], references: [id], onDelete: Cascade)
+  requiredSkills ChallengeSkill[]
+  memberships ChallengeMember[]
+}
+
+model ChallengeSkill {
+  id          String @id @default(cuid())
+  challengeId String
+  skillId     String
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  skill     Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, skillId])
+}
+
+model ChallengeMember {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  joinedAt    DateTime @default(now())
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
 }

@@ -51,5 +51,34 @@ getGitHubCommits: async (username) => {
   return response.data;
 },
 
-};
+getOrganizerChallenges: async () => {
+  const response = await api.get("/challenges/mine");
+  return response.data;
+},
 
+getPublishedChallenges: async (params = {}) => {
+  const response = await api.get("/challenges", { params });
+  return response.data;
+},
+
+joinChallenge: async (id) => {
+  const response = await api.post(`/challenges/${encodeURIComponent(id)}/join`);
+  return response.data;
+},
+
+createChallenge: async (data) => {
+  const response = await api.post("/challenges", data);
+  return response.data;
+},
+
+updateChallenge: async (id, data) => {
+  const response = await api.patch(`/challenges/${encodeURIComponent(id)}`, data);
+  return response.data;
+},
+
+publishChallenge: async (id) => {
+  const response = await api.post(`/challenges/${encodeURIComponent(id)}/publish`);
+  return response.data;
+},
+
+};
