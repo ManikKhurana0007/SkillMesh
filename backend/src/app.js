@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { prisma } from "./lib/prisma.js";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/authRoutes.js";
+import githubRoutes from "./routes/githubRoutes.js";
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
 app.use("/api/auth", authRoutes);
+app.use("/api/github", githubRoutes);
 
 // Basic API route
 app.get("/", (req, res) => {
