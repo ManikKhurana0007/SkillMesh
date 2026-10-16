@@ -1,3 +1,4 @@
+
 import axios from "axios";
 
 export const api = axios.create({
@@ -28,4 +29,27 @@ export const service = {
     const response = await api.post("/auth/logout");
     return response.data;
   },
+
+  getGitHubProfile: async (username) => {
+    const response = await api.get(
+      `/github/profile/${encodeURIComponent(username)}`
+    );
+    return response.data;
+  },
+
+  getGitHubRepositories: async (username) => {
+    const response = await api.get(
+      `/github/repositories/${encodeURIComponent(username)}`
+    );
+    return response.data;
+  },
+  
+getGitHubCommits: async (username) => {
+  const response = await api.get(
+    `/github/commits/${encodeURIComponent(username)}`
+  );
+  return response.data;
+},
+
 };
+
