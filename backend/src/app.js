@@ -7,6 +7,9 @@ import authRoutes from "./routes/authRoutes.js";
 import githubRoutes from "./routes/githubRoutes.js";
 import challengeRoutes from "./routes/challengeRoutes.js";
 import teamForgeRoutes from "./routes/teamForgeRoutes.js";
+import profileRoutes from "./routes/profileRoutes.js";
+import plannerRoutes from "./routes/plannerRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 const app = express();
 
@@ -26,6 +29,9 @@ app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
 app.use("/api/auth", authRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/planner", plannerRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/github", githubRoutes);
 app.use("/api/challenges", challengeRoutes);
 app.use("/api/teamforge", teamForgeRoutes);

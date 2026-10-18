@@ -88,6 +88,7 @@ model Team {
   leader User @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: Cascade)
   members TeamMember[]
   invitations TeamInvitation[]
+  chatMessages TeamChatMessage[]
   project Project?
   @@unique([challengeId, name])
   @@unique([challengeId, leaderId])
@@ -109,6 +110,34 @@ model TeamMember {
   @@unique([challengeId, userId])
   @@unique([teamId, userId])
   @@index([teamId])
+}
+
+model TeamChatMessage {
+  id        String   @id @default(cuid())
+  teamId    String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  attachments TeamChatAttachment[]
+
+  @@index([teamId, createdAt])
+}
+
+model TeamChatAttachment {
+  id           String   @id @default(cuid())
+  messageId    String
+  fileName     String
+  mimeType     String
+  size         Int
+  storageName  String   @unique
+  createdAt    DateTime @default(now())
+
+  message TeamChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
 }
 
 model ParticipantConstraint {
@@ -289,10 +318,12 @@ model User {
   passwordHash String
   role         UserRole @default(STUDENT)
   profile StudentProfile?
+  notifications Notification[]
 organizedChallenges Challenge[] @relation("OrganizerChallenges")
 challengeMemberships ChallengeMember[]
 teamsLed Team[] @relation("TeamLeader")
 teamMemberships TeamMember[]
+sentTeamChatMessages TeamChatMessage[]
 sentTeamInvitations TeamInvitation[] @relation("InvitationSender")
 receivedTeamInvitations TeamInvitation[] @relation("InvitationRecipient")
 createdFormationRuns FormationRun[] @relation("FormationRunCreator")
@@ -328,11 +359,112 @@ model StudentProfile {
   degree         String?
   graduationYear Int?
   githubUrl      String?
+  careerGoal     String?
+  interests      String[] @default([])
+  preferredRoles String[] @default([])
+  githubStats    Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   skills UserSkill[]
+  availability WeeklyAvailability[]
+  evidence ProfileEvidence[]
+  activities LearningActivity[]
+  practiceTasks PracticeTask[]
+  quizAttempts QuizAttempt[]
+}
+
+model WeeklyAvailability {
+  id        String   @id @default(cuid())
+  profileId String
+  dayOfWeek Int
+  slot      String
+  createdAt DateTime @default(now())
+
+  profile StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, dayOfWeek, slot])
+  @@index([profileId])
+}
+
+model ProfileEvidence {
+  id        String   @id @default(cuid())
+  profileId String
+  title     String
+  url       String
+  kind      String   @default("PROJECT")
+  createdAt DateTime @default(now())
+
+  profile StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, createdAt])
+}
+
+model LearningActivity {
+  id        String   @id @default(cuid())
+  profileId String
+  category  String
+  minutes   Int
+  loggedAt  DateTime @default(now())
+
+  profile StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, loggedAt])
+}
+
+model PracticeTask {
+  id          String   @id @default(cuid())
+  profileId   String
+  skillName   String
+  title       String
+  objective   String
+  duration    Int
+  scheduledFor DateTime
+  status      String   @default("SCHEDULED")
+  generationSource String @default("LOCAL")
+  quiz        Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  profile      StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  notification Notification?
+  attempts     QuizAttempt[]
+
+  @@index([profileId, scheduledFor])
+  @@index([profileId, status, scheduledFor])
+}
+
+model QuizAttempt {
+  id           String   @id @default(cuid())
+  profileId    String
+  practiceTaskId String
+  score        Int
+  answers      Json
+  feedback     Json
+  submittedAt  DateTime @default(now())
+
+  profile      StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  practiceTask PracticeTask @relation(fields: [practiceTaskId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, submittedAt])
+}
+
+model Notification {
+  id             String   @id @default(cuid())
+  userId         String
+  practiceTaskId String?  @unique
+  title          String
+  body           String
+  read           Boolean  @default(false)
+  scheduledFor   DateTime?
+  createdAt      DateTime @default(now())
+
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  practiceTask PracticeTask? @relation(fields: [practiceTaskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, scheduledFor])
+  @@index([userId, read])
 }
 
 model Skill {

@@ -1,13 +1,74 @@
 import { Router } from "express";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import multer from "multer";
 import { prisma } from "../lib/prisma.js";
 import { allowRoles, requireAuth } from "../middleware/authMiddleware.js";
 
 const router = Router();
+const teamChatUploadDirectory = fileURLToPath(new URL("../../uploads/team-chat/", import.meta.url));
+const allowedChatFiles = {
+  ".pdf": { mimeType: "application/pdf", matches: (buffer) => buffer.subarray(0, 5).toString() === "%PDF-" },
+  ".doc": { mimeType: "application/msword", matches: (buffer) => buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) },
+  ".docx": { mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", matches: (buffer) => buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) },
+  ".txt": { mimeType: "text/plain", matches: (buffer) => { try { return !buffer.includes(0) && Boolean(new TextDecoder("utf-8", { fatal: true }).decode(buffer)); } catch { return false; } } },
+  ".png": { mimeType: "image/png", matches: (buffer) => buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  ".jpg": { mimeType: "image/jpeg", matches: (buffer) => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
+  ".jpeg": { mimeType: "image/jpeg", matches: (buffer) => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
+  ".gif": { mimeType: "image/gif", matches: (buffer) => ["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString()) },
+  ".webp": { mimeType: "image/webp", matches: (buffer) => buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP" },
+};
+const chatUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 1, fieldSize: 2000 },
+  fileFilter: (req, file, callback) => {
+    const extension = file.originalname.slice(file.originalname.lastIndexOf(".")).toLowerCase();
+    const allowed = allowedChatFiles[extension];
+    if (!allowed || file.mimetype !== allowed.mimeType) {
+      callback(new Error("Attach a PDF, DOC, DOCX, TXT, PNG, JPG, GIF, or WEBP file."));
+      return;
+    }
+    callback(null, true);
+  },
+});
+
+function parseChatUpload(req, res, next) {
+  chatUpload.single("file")(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    const tooLarge = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
+    return res.status(tooLarge ? 413 : 400).json({
+      error: {
+        code: tooLarge ? "CHAT_FILE_TOO_LARGE" : "INVALID_CHAT_FILE",
+        message: tooLarge ? "Attachments must be 10 MB or smaller." : error.message,
+      },
+    });
+  });
+}
+
+function serializeChatMessage(message) {
+  return {
+    id: message.id,
+    body: message.body,
+    createdAt: message.createdAt,
+    sender: message.sender,
+    attachments: (message.attachments || []).map((attachment) => ({
+      id: attachment.id,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      downloadUrl: `/challenges/teams/${encodeURIComponent(message.teamId)}/attachments/${encodeURIComponent(attachment.id)}`,
+    })),
+  };
+}
 
 const challengeInclude = {
   organizer: { select: { id: true, name: true } },
-  requiredSkills: { include: { skill: { select: { id: true, name: true } } } },
+  requiredSkills: { select: { skill: { select: { id: true, name: true } } } },
   _count: { select: { memberships: true } },
 };
 
@@ -45,6 +106,7 @@ function serializeChallenge(challenge) {
     deadline: challenge.deadline,
     teamSize: challenge.teamSize,
     status: challenge.status,
+    createdAt: challenge.createdAt,
     organizer: challenge.organizer,
     requiredSkills: challenge.requiredSkills.map(({ skill }) => skill),
     participantCount: challenge._count?.memberships ?? 0,
@@ -151,7 +213,7 @@ router.post("/:id/join", allowRoles("STUDENT"), async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       const challenge = await tx.challenge.findFirst({
         where: { id: req.params.id, status: "PUBLISHED", deadline: { gt: new Date() } },
-        select: { id: true, teamSize: true },
+        select: { id: true },
       });
       if (!challenge) {
         return { status: 404, body: { error: { code: "CHALLENGE_NOT_FOUND", message: "Published challenge not found." } } };
@@ -163,11 +225,6 @@ router.post("/:id/join", allowRoles("STUDENT"), async (req, res) => {
       });
       if (existing) {
         return { status: 409, body: { error: { code: "ALREADY_JOINED", message: "You have already joined this challenge." } } };
-      }
-
-      const memberCount = await tx.challengeMember.count({ where: { challengeId: challenge.id } });
-      if (memberCount >= challenge.teamSize) {
-        return { status: 409, body: { error: { code: "CHALLENGE_FULL", message: "This challenge has reached its participant limit." } } };
       }
 
       const member = await tx.challengeMember.create({
@@ -183,31 +240,15 @@ router.post("/:id/join", allowRoles("STUDENT"), async (req, res) => {
   }
 });
 
-router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
+router.get("/:id/participants", allowRoles("ORGANIZER"), async (req, res) => {
   try {
     const challenge = await prisma.challenge.findFirst({
-      where: {
-        id: req.params.id,
-        status: "PUBLISHED",
-        deadline: { gt: new Date() },
-        memberships: { some: { userId: req.user.id } },
-      },
-      include: {
-        requiredSkills: { include: { skill: { select: { id: true, name: true } } } },
+      where: { id: req.params.id, organizerId: req.user.id },
+      select: {
+        id: true,
+        title: true,
         memberships: {
-          where: {
-            userId: { not: req.user.id },
-            user: {
-              teamMemberships: {
-                none: {
-                  challengeId: req.params.id,
-                  team: {
-                    status: { in: ["FORMING", "SUBMITTED", "APPROVED"] },
-                  },
-                },
-              },
-            },
-          },
+          orderBy: { joinedAt: "asc" },
           include: {
             user: {
               select: {
@@ -222,7 +263,82 @@ router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
                 },
               },
             },
-            constraint: true,
+          },
+        },
+        teams: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            members: { select: { userId: true } },
+          },
+        },
+      },
+    });
+
+    if (!challenge) {
+      return res.status(404).json({
+        error: { code: "CHALLENGE_NOT_FOUND", message: "Challenge not found." },
+      });
+    }
+
+    const teamByMemberId = new Map();
+    challenge.teams.forEach((team) => {
+      team.members.forEach(({ userId }) => teamByMemberId.set(userId, team));
+    });
+
+    return res.json({
+      challenge: { id: challenge.id, title: challenge.title },
+      participants: challenge.memberships.map(({ user, joinedAt, constraint }) => ({
+        id: user.id,
+        name: user.name,
+        joinedAt,
+        skills: user.profile?.skills.map(({ skill }) => skill) || [],
+        team: teamByMemberId.has(user.id)
+          ? (({ id, name, status }) => ({ id, name, status }))(teamByMemberId.get(user.id))
+          : null,
+        available: !teamByMemberId.has(user.id),
+        weeklyCapacity: 0,
+      })),
+    });
+  } catch (error) {
+    console.error("Challenge participant listing failed:", error.message);
+    return res.status(500).json({
+      error: {
+        code: "PARTICIPANTS_UNAVAILABLE",
+        message: "Could not load challenge participants.",
+      },
+    });
+  }
+});
+
+router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
+  try {
+    const challenge = await prisma.challenge.findFirst({
+      where: {
+        id: req.params.id,
+        status: "PUBLISHED",
+        deadline: { gt: new Date() },
+        memberships: { some: { userId: req.user.id } },
+      },
+      include: {
+        requiredSkills: { select: { skill: { select: { id: true, name: true } } } },
+        memberships: {
+          where: { userId: { not: req.user.id } },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                profile: {
+                  include: {
+                    skills: {
+                      include: { skill: { select: { id: true, name: true } } },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -242,8 +358,8 @@ router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
         name: user.name,
         headline: user.profile?.headline || "",
         bio: user.profile?.bio || "",
-        available: constraint?.available !== false,
-        weeklyCapacity: constraint?.weeklyCapacity || 0,
+        available: true,
+        weeklyCapacity: 0,
         skills: user.profile?.skills.map(({ skill, proficiency, evidenceUrl }) => ({
           id: skill.id,
           name: skill.name,
@@ -258,7 +374,7 @@ router.get("/:id/teammates", allowRoles("STUDENT"), async (req, res) => {
         title: challenge.title,
         teamSize: challenge.teamSize,
         deadline: challenge.deadline,
-        requiredSkills: challenge.requiredSkills.map(({ skill, weight }) => ({ ...skill, weight })),
+        requiredSkills: challenge.requiredSkills.map(({ skill }) => skill),
       },
       candidates,
     });
@@ -331,6 +447,213 @@ router.get("/invitations", allowRoles("STUDENT"), async (req, res) => {
     console.error("Invitation listing failed:", error.message);
     return res.status(500).json({
       error: { code: "INVITATIONS_UNAVAILABLE", message: "Could not load invitations." },
+    });
+  }
+});
+
+router.get("/teams", allowRoles("STUDENT"), async (req, res) => {
+  try {
+    const teams = await prisma.team.findMany({
+      where: { members: { some: { userId: req.user.id } } },
+      include: {
+        challenge: { select: { id: true, title: true } },
+        members: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { joinedAt: "asc" },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    return res.json({
+      teams: teams.map((team) => ({
+        id: team.id,
+        name: team.name,
+        status: team.status,
+        leaderId: team.leaderId,
+        challenge: team.challenge,
+        members: team.members.map(({ user, joinedAt }) => ({ ...user, joinedAt })),
+      })),
+    });
+  } catch (error) {
+    console.error("Team listing failed:", error.message);
+    return res.status(500).json({
+      error: { code: "TEAMS_UNAVAILABLE", message: "Could not load your teams." },
+    });
+  }
+});
+
+router.get("/teams/:teamId/chat", allowRoles("STUDENT"), async (req, res) => {
+  try {
+    const team = await prisma.team.findFirst({
+      where: {
+        id: req.params.teamId,
+        members: { some: { userId: req.user.id } },
+      },
+      include: {
+        challenge: { select: { id: true, title: true } },
+        members: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { joinedAt: "asc" },
+        },
+      },
+    });
+
+    if (!team) {
+      return res.status(404).json({
+        error: { code: "TEAM_NOT_FOUND", message: "Team not found." },
+      });
+    }
+    if (team.members.length < 2) {
+      return res.status(409).json({
+        error: { code: "TEAM_CHAT_NOT_READY", message: "Team chat becomes available when an invitation is accepted." },
+      });
+    }
+
+    const messages = await prisma.teamChatMessage.findMany({
+      where: { teamId: team.id },
+      include: {
+        sender: { select: { id: true, name: true } },
+        attachments: { select: { id: true, fileName: true, mimeType: true, size: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+
+    return res.json({
+      team: {
+        id: team.id,
+        name: team.name,
+        status: team.status,
+        leaderId: team.leaderId,
+        challenge: team.challenge,
+        members: team.members.map(({ user, joinedAt }) => ({ ...user, joinedAt })),
+      },
+      messages: messages.reverse().map(serializeChatMessage),
+    });
+  } catch (error) {
+    console.error("Team chat loading failed:", error.message);
+    return res.status(500).json({
+      error: { code: "TEAM_CHAT_UNAVAILABLE", message: "Could not load team chat." },
+    });
+  }
+});
+
+router.post("/teams/:teamId/messages", allowRoles("STUDENT"), parseChatUpload, async (req, res) => {
+  const parsed = z.object({ body: z.string().trim().max(2000).optional() }).safeParse(req.body);
+  if (!parsed.success || (!parsed.data.body && !req.file)) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_CHAT_MESSAGE",
+        message: "Enter a message or attach a file. Messages can contain up to 2000 characters.",
+      },
+    });
+  }
+
+  let storedPath;
+  try {
+    const team = await prisma.team.findFirst({
+      where: {
+        id: req.params.teamId,
+        members: { some: { userId: req.user.id } },
+      },
+      select: {
+        id: true,
+        members: { select: { userId: true } },
+      },
+    });
+    if (!team) {
+      return res.status(404).json({
+        error: { code: "TEAM_NOT_FOUND", message: "Team not found." },
+      });
+    }
+    if (team.members.length < 2) {
+      return res.status(409).json({
+        error: { code: "TEAM_CHAT_NOT_READY", message: "Team chat becomes available when an invitation is accepted." },
+      });
+    }
+
+    let attachment;
+    if (req.file) {
+      const extension = req.file.originalname.slice(req.file.originalname.lastIndexOf(".")).toLowerCase();
+      const fileType = allowedChatFiles[extension];
+      if (!fileType.matches(req.file.buffer)) {
+        return res.status(400).json({
+          error: { code: "INVALID_CHAT_FILE", message: "The attachment contents do not match its file type." },
+        });
+      }
+
+      const storageName = randomUUID();
+      await mkdir(teamChatUploadDirectory, { recursive: true });
+      storedPath = fileURLToPath(new URL(`../../uploads/team-chat/${storageName}`, import.meta.url));
+      await writeFile(storedPath, req.file.buffer, { flag: "wx" });
+      attachment = {
+        fileName: req.file.originalname.replace(/[\r\n\0]/g, "").slice(0, 255),
+        mimeType: fileType.mimeType,
+        size: req.file.size,
+        storageName,
+      };
+    }
+
+    const message = await prisma.teamChatMessage.create({
+      data: {
+        teamId: team.id,
+        senderId: req.user.id,
+        body: parsed.data.body || "",
+        ...(attachment ? { attachments: { create: attachment } } : {}),
+      },
+      include: {
+        sender: { select: { id: true, name: true } },
+        attachments: { select: { id: true, fileName: true, mimeType: true, size: true } },
+      },
+    });
+    return res.status(201).json({ message: serializeChatMessage(message) });
+  } catch (error) {
+    if (storedPath) {
+      try {
+        await unlink(storedPath);
+      } catch (cleanupError) {
+        if (cleanupError.code !== "ENOENT") {
+          console.error("Failed to remove orphaned team chat upload:", cleanupError.message);
+        }
+      }
+    }
+    console.error("Team chat message creation failed:", error.message);
+    return res.status(500).json({
+      error: { code: "TEAM_CHAT_SEND_FAILED", message: "Could not send your message." },
+    });
+  }
+});
+
+router.get("/teams/:teamId/attachments/:attachmentId", allowRoles("STUDENT"), async (req, res) => {
+  try {
+    const attachment = await prisma.teamChatAttachment.findFirst({
+      where: {
+        id: req.params.attachmentId,
+        message: {
+          teamId: req.params.teamId,
+          team: { members: { some: { userId: req.user.id } } },
+        },
+      },
+    });
+    if (!attachment) {
+      return res.status(404).json({
+        error: { code: "ATTACHMENT_NOT_FOUND", message: "Attachment not found." },
+      });
+    }
+
+    const filePath = fileURLToPath(new URL(`../../uploads/team-chat/${attachment.storageName}`, import.meta.url));
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.type(attachment.mimeType);
+    if (req.query.inline === "1" && attachment.mimeType.startsWith("image/")) {
+      res.setHeader("Content-Disposition", `inline; filename="${attachment.fileName.replace(/["\\\r\n]/g, "_")}"`);
+      return res.sendFile(filePath);
+    }
+    return res.download(filePath, attachment.fileName);
+  } catch (error) {
+    console.error("Team chat attachment download failed:", error.message);
+    return res.status(500).json({
+      error: { code: "CHAT_ATTACHMENT_UNAVAILABLE", message: "Could not download this attachment." },
     });
   }
 });

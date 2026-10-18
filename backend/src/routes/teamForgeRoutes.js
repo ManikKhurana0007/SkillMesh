@@ -72,6 +72,83 @@ async function getProjectAccess(projectId, user) {
 
 router.use(requireAuth);
 
+router.get("/organizer/teams", allowRoles("ORGANIZER"), async (req, res) => {
+  try {
+    const teams = await prisma.team.findMany({
+      where: { challenge: { organizerId: req.user.id } },
+      include: {
+        challenge: { select: { id: true, title: true, deadline: true } },
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                profile: {
+                  include: {
+                    skills: { include: { skill: { select: { id: true, name: true } } } },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { joinedAt: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return res.json({
+      teams: teams.map((team) => ({
+        id: team.id,
+        name: team.name,
+        status: team.status,
+        createdAt: team.createdAt,
+        challengeId: team.challengeId,
+        challenge: team.challenge,
+        members: team.members.map((member) => ({
+          id: member.user.id,
+          name: member.user.name,
+          joinedAt: member.joinedAt,
+          skills: member.user.profile?.skills.map(({ skill }) => skill) || [],
+        })),
+      })),
+    });
+  } catch (error) {
+    console.error("Organizer team listing failed:", error.message);
+    return res.status(500).json({ error: { code: "TEAMS_UNAVAILABLE", message: "Could not load teams for your challenges." } });
+  }
+});
+
+router.patch("/organizer/teams/:teamId/review", allowRoles("ORGANIZER"), async (req, res) => {
+  const parsed = z.object({ status: z.enum(["APPROVED", "REJECTED"]) }).safeParse(req.body);
+  if (!parsed.success) return invalid(res, parsed);
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const team = await tx.team.findFirst({
+        where: { id: req.params.teamId, challenge: { organizerId: req.user.id } },
+        select: { id: true, status: true },
+      });
+      if (!team) return { status: 404, body: { error: { code: "TEAM_NOT_FOUND", message: "Team not found for your challenges." } } };
+      if (!["FORMING", "SUBMITTED"].includes(team.status)) {
+        return { status: 409, body: { error: { code: "TEAM_NOT_REVIEWABLE", message: "Only forming or submitted teams can be reviewed." } } };
+      }
+      if (parsed.data.status === "REJECTED") {
+        await tx.teamMember.deleteMany({ where: { teamId: team.id } });
+      }
+      const updated = await tx.team.update({
+        where: { id: team.id },
+        data: { status: parsed.data.status },
+        select: { id: true, status: true, updatedAt: true },
+      });
+      return { status: 200, body: { team: updated } };
+    });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error("Organizer team review failed:", error.message);
+    return res.status(500).json({ error: { code: "TEAM_REVIEW_FAILED", message: "Could not update this team's review status." } });
+  }
+});
+
 router.get("/challenges/:challengeId/formation-config", allowRoles("ORGANIZER"), async (req, res) => {
   const challenge = await getOrganizerChallenge(req.params.challengeId, req.user.id);
   if (!challenge) return res.status(404).json({ error: { code: "CHALLENGE_NOT_FOUND", message: "Challenge not found." } });
