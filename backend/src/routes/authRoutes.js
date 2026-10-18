@@ -31,6 +31,18 @@ function publicUser(user) {
   };
 }
 
+async function recordStudentLogin(userId, tx = prisma) {
+  const profile = await tx.studentProfile.upsert({
+    where: { userId },
+    update: {},
+    create: { userId },
+    select: { id: true },
+  });
+  await tx.learningActivity.create({
+    data: { profileId: profile.id, category: "Platform login", minutes: 0 },
+  });
+}
+
 // Register
 router.post("/register", async (req, res) => {
   try {
@@ -73,13 +85,19 @@ router.post("/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: normalizedEmail,
-        passwordHash,
-        role: roleMap[role],
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          name: name.trim(),
+          email: normalizedEmail,
+          passwordHash,
+          role: roleMap[role],
+        },
+      });
+      if (createdUser.role === "STUDENT") {
+        await recordStudentLogin(createdUser.id, tx);
+      }
+      return createdUser;
     });
 
     const token = createToken(user.id);
@@ -122,6 +140,10 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({
         message: "Invalid email or password.",
       });
+    }
+
+    if (user.role === "STUDENT") {
+      await recordStudentLogin(user.id);
     }
 
     const token = createToken(user.id);
