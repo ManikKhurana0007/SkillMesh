@@ -19,6 +19,8 @@ Open `/login` and use one of the demo buttons:
 - **Organizer**: Priya Shah â€” TeamForge dashboard, participants, recommendations, and approval.
 - **Mentor**: Jordan Lee â€” shared project and mentoring workspace.
 
+The Organizer demo can create and publish challenges without the backend; demo challenges are saved in the browser.
+
 The store is persisted as `skillmesh-store` in localStorage. Settings includes **Reset demo data**.
 
 ## Structure and routes
@@ -43,9 +45,13 @@ The store is persisted as `skillmesh-store` in localStorage. Settings includes *
 
 ## Scoring formulas
 
-Builder Score is `0.25 GitHub Activity + 0.30 Skill Strength + 0.20 Project Evidence + 0.15 Consistency + 0.10 Profile Quality`. Missing GitHub data uses a neutral 50 and is marked “Not linked”. Tiers are Starter (0–39), Builder (40–64), Contributor (65–84), and Pro (85–100).
+Builder Score is `0.25 GitHub Activity + 0.30 Skill Strength + 0.20 Project Evidence + 0.15 Consistency + 0.10 Profile Quality`. Missing GitHub data uses a neutral 50 and is marked ï¿½Not linkedï¿½. Tiers are Starter (0ï¿½39), Builder (40ï¿½64), Contributor (65ï¿½84), and Pro (85ï¿½100).
 
 Team score is `0.45 Skill Coverage + 0.30 Availability Fit + 0.25 Role Diversity`. Team-size constraints are hard violations. Recommendations are deterministic signals and require human approval.
+
+## Backend schema repair
+
+If challenge creation or TeamForge reports a schema error, run `npm run repair:schema` from the `backend` directory. This applies idempotent, additive repairs for challenge, team, TeamForge, profile, and notification tables without dropping existing data.
 
 ## Future service endpoints
 

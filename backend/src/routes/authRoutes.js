@@ -1,9 +1,12 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
 import { prisma } from "../lib/prisma.js";
 
 const router = Router();
+const googleClient = new OAuth2Client();
 
 const cookieOptions = {
   httpOnly: true,
@@ -158,6 +161,62 @@ router.post("/login", async (req, res) => {
     return res.status(500).json({
       message: "Could not sign in.",
     });
+  }
+});
+
+router.post("/google", async (req, res) => {
+  const credential = req.body?.credential;
+  if (typeof credential !== "string" || !credential.trim()) {
+    return res.status(400).json({ message: "A Google credential is required." });
+  }
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return res.status(503).json({ message: "Google sign-in is not configured yet." });
+  }
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    payload = ticket.getPayload();
+  } catch (error) {
+    console.error("Google credential verification failed:", error.message);
+    return res.status(401).json({ message: "Google sign-in could not be verified." });
+  }
+  if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+    return res.status(401).json({ message: "Google did not provide a verified email address." });
+  }
+
+  try {
+    const email = payload.email.trim().toLowerCase();
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      const name = payload.name?.trim() || email.split("@")[0];
+      const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), 12);
+      try {
+        user = await prisma.$transaction(async (tx) => {
+          const createdUser = await tx.user.create({
+            data: { name, email, passwordHash, role: "STUDENT" },
+          });
+          await recordStudentLogin(createdUser.id, tx);
+          return createdUser;
+        });
+      } catch (error) {
+        if (error.code !== "P2002") throw error;
+        user = await prisma.user.findUnique({ where: { email } });
+        if (!user) throw error;
+      }
+    } else if (user.role === "STUDENT") {
+      await recordStudentLogin(user.id);
+    }
+
+    const token = createToken(user.id);
+    res.cookie("token", token, cookieOptions);
+    return res.json({ message: "Google sign-in successful.", user: publicUser(user) });
+  } catch (error) {
+    console.error("Google account sign-in failed:", error.message);
+    return res.status(500).json({ message: "Could not complete Google sign-in." });
   }
 });
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronRight, CircleUserRound, ClipboardList, Code2, Download, ExternalLink, FileText, Github, Goal, GraduationCap, LayoutDashboard, Lightbulb, LogOut, Menu, Moon, Network, Paperclip, Plus, Rocket, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, Sun, Target, Users, X } from 'lucide-react';
+import { Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronRight, CircleUserRound, ClipboardList, Code2, Download, ExternalLink, Eye, EyeOff, FileText, Github, Goal, GraduationCap, LayoutDashboard, Lightbulb, LogOut, Menu, Moon, Network, Paperclip, Plus, Rocket, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, Sun, Target, Users, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ComposedChart, Line, LineChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
 import { useStore, currentUser, scoreFor } from './store/useStore';
@@ -12,7 +12,7 @@ import { service } from "./services/api";
 
 const Icon = ({ name, size = 16 }) => { const C = { LayoutDashboard, CircleUserRound, Goal, Activity, CalendarDays, Sparkles, Target, Users, ClipboardList, Rocket, Bell, SettingsIcon, GraduationCap, BookOpen, Network, BarChart3, Code2, ShieldCheck, Lightbulb, Search, Menu, Moon, Sun, LogOut, Github, ExternalLink, Plus, ArrowRight, Check, ChevronRight }[name] || Sparkles; return <C size={size} strokeWidth={1.8} />; };
 const initials = n => n?.split(' ').map(x => x[0]).join('').slice(0, 2);
-function Button({ children, variant = 'primary', ...p }) { return <button className={`btn btn-${variant}`} {...p}>{children}</button>; }
+function Button({ children, variant = 'primary', className = '', ...p }) { return <button className={`btn btn-${variant} ${className}`.trim()} {...p}>{children}</button>; }
 function Card({ children, className = '' }) { return <div className={`card ${className}`}>{children}</div>; }
 function PageHeader({ title, subtitle, action }) { return <div className="page-title"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>{action && <div className="row">{action}</div>}</div>; }
 function Badge({ children, tone = '' }) { return <span className={`badge ${tone ? `badge-${tone}` : ''}`}>{children}</span>; }
@@ -24,11 +24,40 @@ const FieldInput = p => <input className="input" {...p} />;
 const studentNav = [['Dashboard','/dashboard','LayoutDashboard'],['Profile','/profile','CircleUserRound'],['Goals','/goals','Goal'],['Activity Log','/activities','Activity'],['Deadlines','/deadlines','CalendarDays'],['AI Action Plan','/planner','Sparkles'],['Challenges','/challenges','Target'],['Find Teammates','/challenges','Users'],['Invitations','/invitations','Users'],['My Hackathons','/hackathons','Trophy'],['Projects','/projects','ClipboardList'],['Startup','/startups/s1','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
 const organizerNav = [['Dashboard','/organizer','LayoutDashboard'],['Challenges','/organizer/challenges','Target'],['Create Challenge','/organizer/challenges/new','Plus'],['Participants','/organizer/participants','Users'],['Teams','/organizer/teams','Network'],['Adaptive Formation','/organizer/teamforge','Sparkles'],['Approved Teams','/organizer/approved','ShieldCheck'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
 const mentorNav = [['Dashboard','/mentor','LayoutDashboard'],['Projects & Startups','/projects','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
+const invitationsUpdatedEvent = 'skillmesh:invitations-updated';
+
+function publishPendingInvitationCount(invitations) {
+  const pendingCount = invitations.filter(invitation => invitation.status === 'PENDING').length;
+  window.dispatchEvent(new CustomEvent(invitationsUpdatedEvent, { detail: { pendingCount } }));
+}
+
+function isOrganizerNavActive(destination, pathname) {
+  if (destination === '/organizer') return pathname === destination;
+  if (destination === '/organizer/challenges') return pathname === destination;
+  if (destination === '/organizer/challenges/new') {
+    return pathname === destination || /^\/organizer\/challenges\/[^/]+\/edit$/.test(pathname);
+  }
+  if (destination === '/organizer/participants') {
+    return pathname === destination || /^\/organizer\/challenges\/[^/]+\/participants$/.test(pathname);
+  }
+  if (destination === '/organizer/teams') {
+    return pathname === destination || /^\/organizer\/challenges\/[^/]+\/teams$/.test(pathname);
+  }
+  if (destination === '/organizer/teamforge') {
+    return pathname === destination || /^\/organizer\/challenges\/[^/]+\/teamforge$/.test(pathname);
+  }
+  if (destination === '/organizer/approved') {
+    return pathname === destination || /^\/organizer\/challenges\/[^/]+\/approved$/.test(pathname);
+  }
+  return pathname === destination;
+}
 
 function Shell({ children }) {
   const s = useStore(), user = currentUser(s), location = useLocation(), navigate = useNavigate();
   const nav = user?.role === 'organizer' ? organizerNav : user?.role === 'mentor' ? mentorNav : studentNav;
   const [searchQuery, setSearchQuery] = useState('');
+  const [remotePendingInvitationCount, setRemotePendingInvitationCount] = useState(null);
+  const isDemoStudent = user?.role === 'student' && user.email?.endsWith('@skillmesh.demo');
   const pageTitle = location.pathname === '/'
     ? 'Home'
     : location.pathname.split('/').filter(Boolean).map(part =>
@@ -72,203 +101,206 @@ function Shell({ children }) {
   const unreadNotificationCount = s.notifications.filter(notification =>
     notification.userId === user?.id && !notification.read
   ).length;
+  const pendingInvitationCount = isDemoStudent
+    ? s.invitations.filter(invitation => invitation.receiverId === user.id && invitation.status === 'Pending').length
+    : remotePendingInvitationCount || 0;
   const showNotificationBadge = s.preferences?.showNotificationBadge !== false;
+  useEffect(() => {
+    if (user?.role !== 'student' || isDemoStudent) {
+      setRemotePendingInvitationCount(null);
+      return undefined;
+    }
+
+    let active = true;
+    let requestVersion = 0;
+    const refreshPendingInvitations = async () => {
+      const version = ++requestVersion;
+      try {
+        const response = await service.getInvitations();
+        if (active && version === requestVersion) {
+          setRemotePendingInvitationCount(
+            response.received.filter(invitation => invitation.status === 'PENDING').length
+          );
+        }
+      } catch (requestError) {
+        if (active && version === requestVersion) {
+          console.error(
+            'Pending invitation count refresh failed:',
+            requestError.response?.data?.error?.message || requestError.message
+          );
+        }
+      }
+    };
+
+    refreshPendingInvitations();
+    const timer = window.setInterval(refreshPendingInvitations, 30_000);
+    const handleInvitationUpdate = event => {
+      if (Number.isInteger(event.detail?.pendingCount)) {
+        requestVersion += 1;
+        setRemotePendingInvitationCount(event.detail.pendingCount);
+      } else {
+        refreshPendingInvitations();
+      }
+    };
+    window.addEventListener('focus', refreshPendingInvitations);
+    window.addEventListener(invitationsUpdatedEvent, handleInvitationUpdate);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshPendingInvitations);
+      window.removeEventListener(invitationsUpdatedEvent, handleInvitationUpdate);
+    };
+  }, [user?.id, user?.role, isDemoStudent]);
   useEffect(() => { document.documentElement.classList.toggle('dark', s.theme === 'dark'); }, [s.theme]);
   if (!user) return <Navigate to="/login" replace />;
-  return <div className="app"><div className="shell"><aside className="sidebar"><Link className="brand" to="/dashboard"><span className="brand-mark">S</span><span>SkillMesh</span></Link><div className="nav-label">{user.role} workspace</div><nav>{nav.map(([label, to, icon]) => <NavLink key={to} className="nav-link" to={to}><Icon name={icon}/><span>{label}</span>{label === 'Invitations' && <Badge tone="red">{s.invitations.filter(i => i.receiverId === user.id && i.status === 'Pending').length}</Badge>}</NavLink>)}</nav><div style={{marginTop:'auto'}}><button className="nav-link" onClick={() => {s.logout();navigate('/login')}}><Icon name="LogOut"/><span>Log out</span></button></div></aside><main className="main"><header className="topbar"><div className="row"><Menu className="accent" size={18}/><span className="muted">{pageTitle}</span></div><div className="row"><div style={{ position: 'relative' }}><div className="row" style={{background:'#f5f5f4',borderRadius:8,padding:'6px 9px'}}><Search size={14}/><input aria-label="Search" placeholder="Search workspace" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') setSearchQuery(''); if (event.key === 'Enter' && searchResults[0]) { navigate(searchResults[0].path); setSearchQuery(''); } }} style={{border:0,outline:0,background:'transparent',width:150,fontSize:12}}/></div>{searchQuery.trim() && <div role="listbox" aria-label="Search results" style={{ position: 'absolute', zIndex: 20, top: '100%', right: 0, marginTop: 6, width: 280, maxHeight: 320, overflowY: 'auto', background: 'var(--card, #fff)', border: '1px solid var(--border, #e5e7eb)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 6 }}>{searchResults.length ? searchResults.map(result => <button type="button" role="option" aria-selected="false" key={result.key} onClick={() => { navigate(result.path); setSearchQuery(''); }} style={{ display: 'block', width: '100%', border: 0, borderRadius: 6, padding: '8px 10px', textAlign: 'left', background: 'transparent', cursor: 'pointer' }}><span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>{result.title}</span><span className="muted" style={{ fontSize: 11 }}>{result.detail}</span></button>) : <p className="muted" style={{ margin: 0, padding: '8px 10px', fontSize: 12 }}>No matching pages or saved items.</p>}</div>}</div><button className="btn btn-secondary" aria-label="Toggle theme" onClick={s.toggleTheme}>{s.theme === 'light' ? <Moon size={15}/> : <Sun size={15}/>}</button><Link to="/notifications" className="nav-link" style={{padding:7}} aria-label={`Notifications${showNotificationBadge && unreadNotificationCount ? `, ${unreadNotificationCount} unread` : ''}`}><Bell size={17}/>{showNotificationBadge && unreadNotificationCount > 0 && <Badge tone="red">{unreadNotificationCount}</Badge>}</Link><div className="row"><div className="avatar">{initials(user.name)}</div><span className="muted">{user.name.split(' ')[0]}</span></div></div></header><div className="content">{children}</div></main></div></div>;
+  return <div className="app"><div className="shell"><aside className="sidebar"><Link className="brand" to="/dashboard"><span className="brand-mark">S</span><span>SkillMesh</span></Link><div className="nav-label">{user.role} workspace</div><nav>{nav.map(([label, to, icon]) => <NavLink key={to} end className={({ isActive }) => `nav-link ${(user.role === 'organizer' ? isOrganizerNavActive(to, location.pathname) : isActive) ? 'active' : ''}`} to={to}><Icon name={icon}/><span>{label}</span>{label === 'Invitations' && pendingInvitationCount > 0 && <Badge tone="red">{pendingInvitationCount}</Badge>}</NavLink>)}</nav><div style={{marginTop:'auto'}}><button className="nav-link" onClick={() => {s.logout();navigate('/login')}}><Icon name="LogOut"/><span>Log out</span></button></div></aside><main className="main"><header className="topbar"><div className="row"><Menu className="accent" size={18}/><span className="muted">{pageTitle}</span></div><div className="row"><div style={{ position: 'relative' }}><div className="row" style={{background:'#f5f5f4',borderRadius:8,padding:'6px 9px'}}><Search size={14}/><input aria-label="Search" placeholder="Search workspace" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') setSearchQuery(''); if (event.key === 'Enter' && searchResults[0]) { navigate(searchResults[0].path); setSearchQuery(''); } }} style={{border:0,outline:0,background:'transparent',width:150,fontSize:12}}/></div>{searchQuery.trim() && <div role="listbox" aria-label="Search results" style={{ position: 'absolute', zIndex: 20, top: '100%', right: 0, marginTop: 6, width: 280, maxHeight: 320, overflowY: 'auto', background: 'var(--card, #fff)', border: '1px solid var(--border, #e5e7eb)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 6 }}>{searchResults.length ? searchResults.map(result => <button type="button" role="option" aria-selected="false" key={result.key} onClick={() => { navigate(result.path); setSearchQuery(''); }} style={{ display: 'block', width: '100%', border: 0, borderRadius: 6, padding: '8px 10px', textAlign: 'left', background: 'transparent', cursor: 'pointer' }}><span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>{result.title}</span><span className="muted" style={{ fontSize: 11 }}>{result.detail}</span></button>) : <p className="muted" style={{ margin: 0, padding: '8px 10px', fontSize: 12 }}>No matching pages or saved items.</p>}</div>}</div><button className="btn btn-secondary" aria-label="Toggle theme" onClick={s.toggleTheme}>{s.theme === 'light' ? <Moon size={15}/> : <Sun size={15}/>}</button><Link to="/notifications" className="nav-link" style={{padding:7}} aria-label={`Notifications${showNotificationBadge && unreadNotificationCount ? `, ${unreadNotificationCount} unread` : ''}`}><Bell size={17}/>{showNotificationBadge && unreadNotificationCount > 0 && <Badge tone="red">{unreadNotificationCount}</Badge>}</Link><div className="row"><div className="avatar">{initials(user.name)}</div><span className="muted">{user.name.split(' ')[0]}</span></div></div></header><div className="content">{children}</div></main></div></div>;
 }
 
 function Landing() { return <div className="login-wrap" style={{display:'block'}}><div className="content"><div className="brand"><span className="brand-mark">S</span> SkillMesh</div><section className="hero"><Badge tone="purple">Student growth, team formation, delivery</Badge><h1>Turn your learning momentum into <span className="accent">real outcomes.</span></h1><p>SkillMesh connects the signals that matter — practice, projects, people, and experiments — so every next step is clear and human-approved.</p><div className="row"><Link className="btn btn-primary" to="/login">Explore the demo <ArrowRight size={15}/></Link><Link className="btn btn-secondary" to="/register">Create account</Link></div></section><div className="grid grid-3"><Card><Sparkles className="accent"/><h2 style={{marginTop:12}}>StudentOS AI</h2><p>See your Builder Score as a transparent signal, then turn goals and deadlines into practical actions.</p></Card><Card><Users className="accent"/><h2 style={{marginTop:12}}>TeamForge</h2><p>Find complementary teammates with explainable recommendations and hard human approval gates.</p></Card><Card><Rocket className="accent"/><h2 style={{marginTop:12}}>VentureTrack</h2><p>Move from project evidence to customer conversations, experiments, and traction without losing context.</p></Card></div><Card className="grid grid-3" style={{marginTop:14, textAlign:'center'}}>{['Learn','Join challenge','Form team','Deliver project','Validate idea','Update records'].map((x,i)=><div key={x}><div className="avatar" style={{margin:'0 auto 8px'}}>{i+1}</div><b style={{fontSize:12}}>{x}</b></div>)}</Card></div></div> }
 
 function Auth({ register = false }) {
   const s = useStore();
+  const setAuthenticatedUser = useStore(state => state.setAuthenticatedUser);
   const nav = useNavigate();
-
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    password: "",
-    role: "student",
-  });
-
+  const googleButtonRef = useRef(null);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim();
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'student' });
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
 
-  const submit = async (e) => {
-    e.preventDefault();
-
-    if (
-      !form.email.trim() ||
-      form.password.length < 6 ||
-      (register && !form.name.trim())
-    ) {
-      return toast.error(
-        "Enter the required details and a password of 6+ characters."
-      );
+  useEffect(() => {
+    if (!googleClientId) return undefined;
+    let active = true;
+    const renderGoogleButton = () => {
+      if (!active || !window.google?.accounts?.id || !googleButtonRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async response => {
+          if (!response.credential) {
+            setAuthError('Google did not return a sign-in credential. Please try again.');
+            return;
+          }
+          setGoogleLoading(true);
+          setAuthError('');
+          try {
+            const result = await service.googleLogin(response.credential);
+            setAuthenticatedUser(result.user);
+            toast.success(result.message);
+            nav('/dashboard');
+          } catch (error) {
+            setAuthError(error.response?.data?.message || 'Google sign-in failed. Please try again.');
+          } finally {
+            setGoogleLoading(false);
+          }
+        },
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        shape: 'rectangular',
+        text: register ? 'signup_with' : 'signin_with',
+        width: Math.max(280, Math.floor(googleButtonRef.current.getBoundingClientRect().width)),
+        logo_alignment: 'left',
+      });
+    };
+    const existingScript = document.querySelector('script[data-skillmesh-google]');
+    if (window.google?.accounts?.id) {
+      renderGoogleButton();
+    } else if (existingScript) {
+      existingScript.addEventListener('load', renderGoogleButton);
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.dataset.skillmeshGoogle = 'true';
+      script.addEventListener('load', renderGoogleButton);
+      script.addEventListener('error', () => setAuthError('Google sign-in could not load. Check your connection or use email instead.'));
+      document.head.appendChild(script);
     }
+    return () => {
+      active = false;
+      existingScript?.removeEventListener('load', renderGoogleButton);
+    };
+  }, [googleClientId, nav, register, setAuthenticatedUser]);
 
+  const finishSignIn = (response) => {
+    setAuthenticatedUser(response.user);
+    toast.success(response.message);
+    nav('/dashboard');
+  };
+
+  const submit = async event => {
+    event.preventDefault();
+    setAuthError('');
+    if (register && form.password !== form.confirmPassword) {
+      setAuthError('Your passwords do not match.');
+      return;
+    }
     setLoading(true);
-
     try {
       const response = register
-        ? await service.register(form)
-        : await service.login({
-            email: form.email,
-            password: form.password,
-          });
-
-      s.setAuthenticatedUser(response.user);
-
-      toast.success(response.message);
-      nav("/dashboard");
+        ? await service.register({ name: form.name, email: form.email, password: form.password, role: form.role })
+        : await service.login({ email: form.email, password: form.password });
+      finishSignIn(response);
     } catch (error) {
-      toast.error(
-        error.response?.data?.message ||
-          "Unable to connect to SkillMesh. Check that the backend is running."
-      );
+      setAuthError(error.response?.data?.message || 'Unable to connect to SkillMesh. Check that the backend is running.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-wrap">
-      <Card className="login-card">
-        <Link className="brand" to="/">
-          <span className="brand-mark">S</span>
-          <span>SkillMesh</span>
-        </Link>
-
-        <h1>{register ? "Create your account" : "Welcome back"}</h1>
-
-        <p>
-          {register
-            ? "Start building your learning graph."
-            : "Sign in with your credentials."}
-        </p>
-
-        <form onSubmit={submit}>
-          {register && (
-            <Field label="Name">
-              <FieldInput
-                required
-                value={form.name}
-                onChange={(e) =>
-                  setForm({ ...form, name: e.target.value })
-                }
-                placeholder="Your name"
-              />
-            </Field>
-          )}
-
-          <Field label="Email">
-            <FieldInput
-              required
-              type="email"
-              value={form.email}
-              onChange={(e) =>
-                setForm({ ...form, email: e.target.value })
-              }
-              placeholder="you@example.com"
-            />
-          </Field>
-
-          <Field label="Password">
-            <FieldInput
-              required
-              minLength={6}
-              type="password"
-              value={form.password}
-              onChange={(e) =>
-                setForm({ ...form, password: e.target.value })
-              }
-              placeholder="6+ characters"
-            />
-          </Field>
-
-          {register && (
-            <Field label="Role">
-              <select
-                className="select"
-                value={form.role}
-                onChange={(e) =>
-                  setForm({ ...form, role: e.target.value })
-                }
-              >
-                <option value="student">Student</option>
-                <option value="organizer">Organizer</option>
-                <option value="mentor">Mentor</option>
-              </select>
-            </Field>
-          )}
-
-          <Button type="submit" disabled={loading} style={{ width: "100%" }}>
-            {loading
-              ? "Please wait..."
-              : register
-                ? "Create account"
-                : "Sign in"}
-          </Button>
-        </form>
-
-        {!register && (
-          <>
-            <div
-              className="muted"
-              style={{ textAlign: "center", margin: "16px 0 8px" }}
-            >
-              Quick demo access
+    <div className="login-wrap auth-wrap">
+      <div className="auth-layout">
+        <section className="auth-story">
+          <Link className="brand auth-brand" to="/"><span className="brand-mark">S</span><span>SkillMesh</span></Link>
+          <div className="auth-story-copy">
+            <span className="auth-eyebrow">LEARN · BUILD · GROW</span>
+            <h1>{register ? 'Build a learning habit that takes you somewhere.' : 'Your next big thing starts with one sign in.'}</h1>
+            <p>Keep your goals, focused practice, team projects, and momentum together in one workspace.</p>
+            <div className="auth-story-points">
+              <span><Check size={15}/> Turn goals into real progress</span>
+              <span><Check size={15}/> Find your people and build together</span>
+              <span><Check size={15}/> See the work you have put in</span>
             </div>
-
-            <div className="grid grid-3">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  s.login("aisha");
-                  nav("/dashboard");
-                }}
-              >
-                Student
-              </Button>
-
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  s.login("organizer");
-                  nav("/organizer");
-                }}
-              >
-                Organizer
-              </Button>
-
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  s.login("mentor");
-                  nav("/mentor");
-                }}
-              >
-                Mentor
-              </Button>
-            </div>
-          </>
-        )}
-
-        <p style={{ textAlign: "center", marginTop: 18 }}>
-          <Link
-            className="accent"
-            to={register ? "/login" : "/register"}
-          >
-            {register
-              ? "Already have an account? Sign in"
-              : "New here? Create an account"}
-          </Link>
-        </p>
-      </Card>
+          </div>
+          <span className="auth-story-foot">A clearer path from learning to doing.</span>
+        </section>
+        <Card className="login-card auth-card">
+          <Link className="brand auth-mobile-brand" to="/"><span className="brand-mark">S</span><span>SkillMesh</span></Link>
+          <span className="auth-eyebrow">{register ? 'GET STARTED' : 'WELCOME BACK'}</span>
+          <h2 className="auth-heading">{register ? 'Create your account' : 'Sign in to SkillMesh'}</h2>
+          <p className="auth-description">{register ? 'Create an account and start moving your goals forward.' : 'Pick up where you left off.'}</p>
+          {googleClientId && <div className="auth-google-button" ref={googleButtonRef} aria-label={register ? 'Sign up with Google' : 'Sign in with Google'}/>}
+          {googleLoading && <p className="muted" role="status">Signing in with Google...</p>}
+          {googleClientId && <div className="auth-divider"><span>or continue with email</span></div>}
+          <form onSubmit={submit}>
+            {register && <Field label="Full name"><FieldInput className="input auth-input" aria-label="Full name" required autoComplete="name" maxLength={120} value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} placeholder="Your name"/></Field>}
+            <Field label="Email address"><FieldInput className="input auth-input" aria-label="Email address" required type="email" autoComplete="email" value={form.email} onChange={event => setForm(current => ({ ...current, email: event.target.value }))} placeholder="you@example.com"/></Field>
+            <Field label="Password"><div className="auth-password-wrap"><FieldInput className="input auth-input" aria-label="Password" required minLength={6} autoComplete={register ? 'new-password' : 'current-password'} type={showPassword ? 'text' : 'password'} value={form.password} onChange={event => setForm(current => ({ ...current, password: event.target.value }))} placeholder={register ? 'At least 6 characters' : 'Enter your password'}/><button className="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div></Field>
+            {register && <>
+              <Field label="Confirm password"><div className="auth-password-wrap"><FieldInput className="input auth-input" aria-label="Confirm password" required minLength={6} autoComplete="new-password" type={showConfirmPassword ? 'text' : 'password'} value={form.confirmPassword} onChange={event => setForm(current => ({ ...current, confirmPassword: event.target.value }))} placeholder="Enter your password again"/><button className="auth-password-toggle" type="button" aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'} onClick={() => setShowConfirmPassword(value => !value)}>{showConfirmPassword ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div></Field>
+              <Field label="I am joining as"><select className="select auth-input" aria-label="I am joining as" value={form.role} onChange={event => setForm(current => ({ ...current, role: event.target.value }))}><option value="student">Student</option><option value="organizer">Organizer</option><option value="mentor">Mentor</option></select></Field>
+            </>}
+            {authError && <p className="auth-error" role="alert">{authError}</p>}
+            <Button type="submit" disabled={loading || googleLoading} className="auth-submit">{loading ? 'Please wait...' : register ? 'Create account' : 'Sign in'}</Button>
+          </form>
+          {!register && <div className="auth-demo"><span className="auth-divider"><span>Just exploring?</span></span><p>Use a demo workspace without creating an account.</p><div className="grid grid-3"><Button type="button" variant="secondary" onClick={() => { s.login('aisha'); nav('/dashboard'); }}>Student demo</Button><Button type="button" variant="secondary" onClick={() => { s.login('organizer'); nav('/organizer'); }}>Organizer</Button><Button type="button" variant="secondary" onClick={() => { s.login('mentor'); nav('/mentor'); }}>Mentor</Button></div></div>}
+          <p className="auth-switch">{register ? 'Already have an account?' : 'New to SkillMesh?'} <Link className="accent" to={register ? '/login' : '/register'}>{register ? 'Sign in' : 'Create an account'}</Link></p>
+          <p className="auth-security">Your account is protected with secure authentication.</p>
+        </Card>
+      </div>
     </div>
   );
+}
+
+function GoogleMark() {
+  return <svg aria-hidden="true" viewBox="0 0 48 48" width="19" height="19"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" transform="translate(0 4)"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.73 7.18l7.65 5.94c4.46-4.12 7.12-10.2 7.12-17.59Z" transform="translate(0 0)"/><path fill="#FBBC05" d="M10.53 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.9 23.9 0 0 0 0 21.56l7.98-6.19Z" transform="translate(0 4)"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.86l-7.65-5.94c-2.13 1.43-4.87 2.27-8.25 2.27-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" transform="translate(0 -4)"/></svg>;
 }
 function localDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -1689,7 +1721,11 @@ function Invitations() {
   const [data, setData] = useState({ received: [], sent: [] }), [tab, setTab] = useState('received'), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const load = async () => {
     setLoading(true); setError('');
-    try { setData(await service.getInvitations()); } catch (requestError) { setError(requestError.response?.data?.error?.message || 'Could not load invitations.'); } finally { setLoading(false); }
+    try {
+      const invitations = await service.getInvitations();
+      setData(invitations);
+      publishPendingInvitationCount(invitations.received);
+    } catch (requestError) { setError(requestError.response?.data?.error?.message || 'Could not load invitations.'); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
   const respond = async (invitation, status) => {
@@ -1698,7 +1734,8 @@ function Invitations() {
   if (loading) return <Card><p>Loading invitations...</p></Card>;
   if (error) return <Card><p>{error}</p><Button variant="secondary" onClick={load}>Retry</Button></Card>;
   const invitations = tab === 'received' ? data.received : data.sent;
-  return <><PageHeader title="Invitations" subtitle="Send and respond to persistent team invitations."/><div className="tabs"><button className={`tab ${tab === 'received' ? 'active' : ''}`} onClick={()=>setTab('received')}>Received ({data.received.length})</button><button className={`tab ${tab === 'sent' ? 'active' : ''}`} onClick={()=>setTab('sent')}>Sent ({data.sent.length})</button></div>{invitations.length === 0 ? <Card><h2>No {tab} invitations</h2><p>{tab === 'received' ? 'Invitations from teammates will appear here.' : 'Invitations you send from Find teammates will appear here.'}</p></Card> : <div className="grid grid-2">{invitations.map(invitation=><Card key={invitation.id}><div className="row between"><div><b>{tab === 'received' ? invitation.sender.name : invitation.recipient.name}</b><p>{invitation.team.challenge.title} · {new Date(invitation.createdAt).toLocaleDateString()}</p></div><Badge tone={invitation.status === 'PENDING' ? 'amber' : invitation.status === 'ACCEPTED' ? 'green' : 'red'}>{invitation.status}</Badge></div><p style={{margin:'14px 0'}}>{invitation.message || 'Team invitation'}</p>{tab === 'received' && invitation.status === 'PENDING' && <div className="row"><Button onClick={()=>respond(invitation,'ACCEPTED')}><Check size={14}/> Accept</Button><Button variant="secondary" onClick={()=>respond(invitation,'REJECTED')}>Reject</Button></div>}{invitation.status === 'ACCEPTED' && <Link className="btn btn-primary" to={`/challenges/${invitation.team.challenge.id}/my-team`}>Open team and group chat</Link>}</Card>)}</div>}</>;
+  const pendingReceivedCount = data.received.filter(invitation => invitation.status === 'PENDING').length;
+  return <><PageHeader title="Invitations" subtitle="Send and respond to persistent team invitations."/><div className="tabs"><button className={`tab ${tab === 'received' ? 'active' : ''}`} onClick={()=>setTab('received')}>Received ({data.received.length}) {pendingReceivedCount > 0 && <Badge tone="amber">{pendingReceivedCount} pending</Badge>}</button><button className={`tab ${tab === 'sent' ? 'active' : ''}`} onClick={()=>setTab('sent')}>Sent ({data.sent.length})</button></div>{invitations.length === 0 ? <Card><h2>No {tab} invitations</h2><p>{tab === 'received' ? 'Invitations from teammates will appear here.' : 'Invitations you send from Find teammates will appear here.'}</p></Card> : <div className="grid grid-2">{invitations.map(invitation=><Card key={invitation.id}><div className="row between"><div><b>{tab === 'received' ? invitation.sender.name : invitation.recipient.name}</b><p>{invitation.team.challenge.title} · {new Date(invitation.createdAt).toLocaleDateString()}</p></div><Badge tone={invitation.status === 'PENDING' ? 'amber' : invitation.status === 'ACCEPTED' ? 'green' : 'red'}>{invitation.status}</Badge></div><p style={{margin:'14px 0'}}>{invitation.message || 'Team invitation'}</p>{tab === 'received' && invitation.status === 'PENDING' && <div className="row"><Button onClick={()=>respond(invitation,'ACCEPTED')}><Check size={14}/> Accept</Button><Button variant="secondary" onClick={()=>respond(invitation,'REJECTED')}>Reject</Button></div>}{invitation.status === 'ACCEPTED' && <Link className="btn btn-primary" to={`/challenges/${invitation.team.challenge.id}/my-team`}>Open team and group chat</Link>}</Card>)}</div>}</>;
 }
 function LegacyHackathons() { const s=useStore(),u=currentUser(s),teams=s.teams.filter(t=>t.members.includes(u.id));return <><PageHeader title="My hackathons" subtitle="Your active challenge commitments and team health."/><div className="grid grid-2">{s.challenges.filter(c=>c.participants.includes(u.id)).map(c=>{const t=teams.find(x=>x.challengeId===c.id);return <Card key={c.id}><div className="row between"><h2>{c.title}</h2><Badge tone={t?.approval==='Approved'?'green':'amber'}>{t?t.approval:'No team yet'}</Badge></div><p>Deadline {c.deadline} · team size {c.teamSize}</p>{t?<><div className="row" style={{margin:'14px 0'}}>{t.members.map(id=><div className="avatar" title={s.users.find(x=>x.id===id)?.name} key={id}>{initials(s.users.find(x=>x.id===id)?.name)}</div>)}</div><div className="row" style={{flexWrap:'wrap'}}>{(t.coveredSkills||c.requiredSkills.slice(0,2)).map(x=><Badge tone="green" key={x}>{x}</Badge>)}{(t.missingSkills||c.requiredSkills.slice(2)).map(x=><Badge tone="red" key={x}>{x}</Badge>)}</div></>:<Link className="btn btn-primary" to={`/challenges/${c.id}/find-teammates`} style={{marginTop:14}}>Find teammates</Link>}</Card>})}</div></> }
 
@@ -1874,28 +1911,50 @@ function OrganizerChallenges() {
 }
 
 function ChallengeEditor() {
+  const store = useStore();
+  const user = currentUser(store);
+  const navigate = useNavigate();
   const [form, setForm] = useState({ title: '', description: '', deadline: '', teamSize: 4, requiredSkills: 'React, Data Analysis, Product' });
   const [saving, setSaving] = useState(false);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minimumDeadline = localDateKey(tomorrow);
 
   const save = async (publish) => {
-    const requiredSkills = form.requiredSkills.split(',').map(skill => skill.trim()).filter(Boolean);
+    const requiredSkills = [...new Set(form.requiredSkills.split(',').map(skill => skill.trim()).filter(Boolean))];
+    const teamSize = Number(form.teamSize);
     if (!form.title.trim() || !form.description.trim() || !form.deadline || requiredSkills.length === 0) {
       toast.error('Complete the title, description, deadline, and at least one required skill.');
       return;
     }
+    if (!Number.isInteger(teamSize) || teamSize < 2 || teamSize > 20) {
+      toast.error('Team size must be a whole number between 2 and 20.');
+      return;
+    }
+    if (new Date(`${form.deadline}T00:00:00`).getTime() <= Date.now()) {
+      toast.error('Choose a deadline in the future.');
+      return;
+    }
     setSaving(true);
     try {
-      const response = await service.createChallenge({ ...form, teamSize: Number(form.teamSize), requiredSkills });
-      if (publish) await service.publishChallenge(response.challenge.id);
+      const challengeData = { ...form, title: form.title.trim(), description: form.description.trim(), teamSize, requiredSkills };
+      const challenge = isDemoOrganizer(user)
+        ? store.addChallenge(challengeData)
+        : (await service.createChallenge(challengeData)).challenge;
+      if (publish) {
+        if (isDemoOrganizer(user)) store.updateChallenge(challenge.id, { status: 'PUBLISHED' });
+        else await service.publishChallenge(challenge.id);
+      }
       toast.success(publish ? 'Challenge published' : 'Challenge saved as draft');
+      navigate('/organizer/challenges');
     } catch (requestError) {
-      toast.error(requestError.response?.data?.error?.message || 'Could not save the challenge.');
+      toast.error(requestError.response?.data?.error?.message || requestError.message || 'Could not save the challenge.');
     } finally {
       setSaving(false);
     }
   };
 
-  return <><PageHeader title="Create challenge" subtitle="Define the basics, then review before publishing." action={<div className="row"><Button variant="secondary" disabled={saving} onClick={() => save(false)}>Save draft</Button><Button disabled={saving} onClick={() => save(true)}>Publish</Button></div>}/><div className="grid grid-2"><Card><h2>Basics</h2><Field label="Challenge title"><FieldInput value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Climate Action Sprint"/></Field><Field label="Description"><textarea className="textarea" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the problem and the audience." /></Field><div className="grid grid-2"><Field label="Deadline"><FieldInput type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></Field><Field label="Team size"><FieldInput type="number" min="2" max="20" value={form.teamSize} onChange={e=>setForm({...form,teamSize:e.target.value})}/></Field></div></Card><Card><h2>Requirements</h2><Field label="Required skills (comma separated)"><FieldInput value={form.requiredSkills} onChange={e=>setForm({...form,requiredSkills:e.target.value})} placeholder="React, Product, Data Analysis"/></Field><div className="row" style={{flexWrap:'wrap',marginTop:12}}>{form.requiredSkills.split(',').map(skill=>skill.trim()).filter(Boolean).map(skill=><Badge tone="purple" key={skill}>{skill}</Badge>)}</div><h2 style={{marginTop:24}}>Review</h2><p>Drafts are private to the organizer. Publishing makes the challenge visible to students and eligible for registrations.</p></Card></div></>;
+  return <><PageHeader title="Create challenge" subtitle="Define the basics, then review before publishing." action={<div className="row"><Button variant="secondary" disabled={saving} onClick={() => save(false)}>Save draft</Button><Button disabled={saving} onClick={() => save(true)}>Publish</Button></div>}/><div className="grid grid-2"><Card><h2>Basics</h2><Field label="Challenge title"><FieldInput required maxLength="160" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Climate Action Sprint"/></Field><Field label="Description"><textarea className="textarea" required maxLength="5000" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the problem and the audience." /></Field><div className="grid grid-2"><Field label="Deadline"><FieldInput required type="date" min={minimumDeadline} value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></Field><Field label="Team size"><FieldInput required type="number" min="2" max="20" step="1" value={form.teamSize} onChange={e=>setForm({...form,teamSize:e.target.value})}/></Field></div></Card><Card><h2>Requirements</h2><Field label="Required skills (comma separated)"><FieldInput required value={form.requiredSkills} onChange={e=>setForm({...form,requiredSkills:e.target.value})} placeholder="React, Product, Data Analysis"/></Field><div className="row" style={{flexWrap:'wrap',marginTop:12}}>{form.requiredSkills.split(',').map(skill=>skill.trim()).filter(Boolean).map(skill=><Badge tone="purple" key={skill}>{skill}</Badge>)}</div><h2 style={{marginTop:24}}>Review</h2><p>Drafts are private to the organizer. Publishing makes the challenge visible to students and eligible for registrations.</p></Card></div></>;
 }
 
 function isDemoOrganizer(user) {
