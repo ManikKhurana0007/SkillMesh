@@ -14,7 +14,16 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 const app = express();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  contentSecurityPolicy: {
+    directives: {
+      "script-src": ["'self'", "https://accounts.google.com"],
+      "frame-src": ["'self'", "https://accounts.google.com"],
+      "connect-src": ["'self'", "https://accounts.google.com"],
+    },
+  },
+}));
 
 // Allow requests from your React frontend
 app.use(

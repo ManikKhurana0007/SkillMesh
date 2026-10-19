@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "prisma generate && tsx watch src/server.js",
     "start": "prisma generate && tsx src/server.js",
+    "repair:schema": "node scripts/repair-team-invitation-schema.js",
     "repair:team-invitations": "node scripts/repair-team-invitation-schema.js",
     "repair:profile": "node scripts/repair-team-invitation-schema.js"
   },
@@ -22,6 +23,7 @@
     "dotenv": "^18.0.8",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.1",
+    "google-auth-library": "^10.9.1",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",

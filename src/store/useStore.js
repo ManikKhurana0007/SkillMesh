@@ -119,6 +119,16 @@ export const useStore = create(persist((set, get) => ({
     ),
   })),
   joinChallenge: (id) => set(s => ({ challenges: s.challenges.map(c => c.id === id && !c.participants.includes(s.currentUserId) ? { ...c, participants: [...c.participants, s.currentUserId] } : c) })),
+  addChallenge: (challenge) => {
+    const created = {
+      ...challenge,
+      id: `demo-challenge-${Date.now()}`,
+      status: 'DRAFT',
+      participants: [],
+    };
+    set(s => ({ challenges: [...s.challenges, created] }));
+    return created;
+  },
   updateChallenge: (id, patch) => set(s => ({ challenges: s.challenges.map(challenge => challenge.id === id ? { ...challenge, ...patch } : challenge) })),
   sendInvite: (data) => { const s = get(); const c = s.challenges.find(c => c.id === data.challengeId); const error = validateInvitation({ ...data, participants: c.participants, teams: s.teams, invitations: s.invitations, challenge: c }); if (error) throw new Error(error); const invite = { ...data, id: `i${Date.now()}`, senderId: s.currentUserId, status: 'Pending', createdAt: new Date().toISOString().slice(0, 10) }; set({ invitations: [...s.invitations, invite], notifications: [...s.notifications, { id: `n${Date.now()}`, userId: data.receiverId, type: 'invites', title: 'New team invitation', body: `${s.users.find(u => u.id === s.currentUserId)?.name} invited you to ${c.title}.`, read: false }] }); },
   respondInvite: (id, status) => { const s = get(); const invite = s.invitations.find(i => i.id === id); if (!invite) return; if (status === 'Accepted') { const challenge = s.challenges.find(c => c.id === invite.challengeId); const existing = s.teams.find(t => t.challengeId === invite.challengeId && t.members.includes(invite.receiverId)); if (existing) throw new Error('You are already on a team for this challenge.'); const senderTeam = s.teams.find(t => t.challengeId === invite.challengeId && t.members.includes(invite.senderId)); if (senderTeam && senderTeam.members.length >= challenge.teamSize) throw new Error('This team is already full.'); let teams = s.teams; let team = senderTeam; if (!team) { team = { id: `t${Date.now()}`, challengeId: invite.challengeId, members: [invite.senderId], approval: 'Pending approval', formation_type: 'self_formed', score: 0, coveredSkills: [], missingSkills: [] }; teams = [...teams, team]; } teams = teams.map(t => t.id === team.id ? { ...t, members: [...t.members, invite.receiverId] } : t); set({ invitations: s.invitations.map(i => i.id === id ? { ...i, status } : i), teams, notifications: [...s.notifications, { id: `n${Date.now()}`, userId: invite.senderId, type: 'responses', title: 'Invitation accepted', body: `${s.users.find(u => u.id === invite.receiverId)?.name} accepted your invitation.`, read: false }] }); return; } set({ invitations: s.invitations.map(i => i.id === id ? { ...i, status } : i) }); },
