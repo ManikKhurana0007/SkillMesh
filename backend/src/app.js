@@ -10,6 +10,10 @@ import teamForgeRoutes from "./routes/teamForgeRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
 import plannerRoutes from "./routes/plannerRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import mentorRoutes from "./routes/mentorRoutes.js";
+import codingPracticeRoutes from "./routes/codingPracticeRoutes.js";
+import resumeRoutes from "./routes/resumeRoutes.js";
+import projectMentorRoutes from "./routes/projectMentorRoutes.js";
 
 const app = express();
 
@@ -41,6 +45,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/planner", plannerRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/mentor", mentorRoutes);
+app.use("/api/coding-practice", codingPracticeRoutes);
+app.use("/api/resumes", resumeRoutes);
+app.use("/api/project-mentor", projectMentorRoutes);
 app.use("/api/github", githubRoutes);
 app.use("/api/challenges", challengeRoutes);
 app.use("/api/teamforge", teamForgeRoutes);

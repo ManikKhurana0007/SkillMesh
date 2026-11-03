@@ -23,6 +23,7 @@ const generatedStudents = Array.from({ length: 32 }, (_, index) => {
   return { ...u, github: index % 4 === 3 ? null : { username: id, repos: 3 + index % 18, commits: 8 + index * 2, stars: 12 + index * 9, languages: 2, topLanguages: ['JavaScript', 'Python'].slice(0, index % 2 + 1), activity: [1, 2, 3, index % 8, 4, 2, 5], lastSynced: 'Yesterday', source: 'Demo data' } };
 });
 const allStudents = [...seedUsers, ...generatedStudents];
+const demoSessionStart = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
 const challengeSeed = [
   { id: 'c1', title: 'Climate Action Sprint', description: 'Build a practical tool that helps communities measure and reduce climate impact.', requiredSkills: ['React', 'Data Analysis', 'Product'], roles: ['Frontend', 'Data', 'Product'], teamSize: 4, deadline: '2026-11-02', participants: ['aisha', 'ben', 'chloe', 'diego', 'maya'] },
   { id: 'c2', title: 'Campus Innovation Lab', description: 'Create a student-first experience for learning, collaboration, or wellbeing.', requiredSkills: ['UI/UX', 'React', 'Node.js'], roles: ['Design', 'Frontend', 'Backend'], teamSize: 3, deadline: '2026-10-28', participants: ['aisha', 'ben', 'noah'] },
@@ -40,8 +41,12 @@ const initialState = {
   teams: [{ id: 't1', challengeId: 'c2', members: ['aisha', 'noah'], approval: 'Approved', score: 82, coveredSkills: ['React', 'UI/UX', 'Testing'], missingSkills: ['Node.js'] }],
   goals: [{ id: 'g1', userId: 'aisha', title: 'Ship a portfolio project', targetDate: '2026-10-25', progress: 68, priority: 'High', status: 'In progress' }, { id: 'g2', userId: 'aisha', title: 'Practice algorithms', targetDate: '2026-11-01', progress: 42, priority: 'Medium', status: 'In progress' }],
   activities: [{ id: 'a1', userId: 'aisha', type: 'coding', duration: 90, date: '2026-10-14', notes: 'Built score card' }, { id: 'a2', userId: 'aisha', type: 'practice', duration: 60, date: '2026-10-13', notes: 'Algorithm practice set' }],
+  codingPracticeSessions: [],
   deadlines: [{ id: 'd1', userId: 'aisha', title: 'Climate Action Sprint pitch', date: '2026-11-02', effort: 6, importance: 'High' }, { id: 'd2', userId: 'aisha', title: 'Algorithms study review', date: '2026-10-20', effort: 3, importance: 'Medium' }],
   projects: [{ id: 'p1', name: 'CampusCart', description: 'A student marketplace for trusted textbook exchanges.', status: 'Active', progress: 64, members: ['aisha', 'noah'], tasks: [{ id: 'task1', title: 'Polish onboarding', column: 'In Progress', priority: 'High', assignee: 'aisha' }, { id: 'task2', title: 'Add search filters', column: 'To Do', priority: 'Medium', assignee: 'noah' }, { id: 'task3', title: 'User interview notes', column: 'Review', priority: 'Low', assignee: 'aisha' }, { id: 'task4', title: 'Project scaffold', column: 'Done', priority: 'High', assignee: 'aisha' }], milestones: [{ id: 'm1', title: 'Clickable prototype', status: 'Done', progress: 100 }, { id: 'm2', title: 'Pilot launch', status: 'In progress', progress: 48 }], evidence: [{ id: 'e1', label: 'Repository', url: 'https://github.com/skillmesh/campuscart' }] }],
+  mentorSessions: [{ id: 'ms1', mentorId: 'mentor', title: 'Portfolio review clinic', description: 'Bring one project and get practical feedback on your portfolio, README, and next steps.', startsAt: demoSessionStart, duration: 45, capacity: 6, status: 'OPEN', bookings: [{ id: 'booking1', student: { id: 'aisha', name: 'Aisha Rahman' }, createdAt: new Date().toISOString() }] }],
+  meetingNotes: [{ id: 'mn1', sessionId: 'ms1', authorId: 'mentor', authorName: 'Jordan Lee', type: 'KEY_POINT', content: 'Bring a project link and one question you want feedback on.', createdAt: new Date().toISOString() }],
+  mentorProjects: [{ id: 'mp1', mentorId: 'mentor', title: 'Accessible campus navigation', description: 'Design a student-led tool that makes it easier to find accessible routes and campus services.', skills: ['React', 'Accessibility', 'Product design'], status: 'OPEN', createdAt: new Date().toISOString(), submissions: [{ id: 'idea1', studentId: 'aisha', student: { id: 'aisha', name: 'Aisha Rahman', profile: { skills: [{ skill: { name: 'React' } }, { skill: { name: 'UI/UX' } }] } }, title: 'A live map for step-free routes', summary: 'A mobile-friendly map that lets students report blocked ramps and find verified step-free routes between campus buildings.', projectUrl: '', status: 'PENDING', mentorFeedback: '', createdAt: new Date().toISOString() }] }],
   startups: [{ id: 's1', projectId: 'p1', name: 'CampusCart', stage: 'Validation', problem: 'Students struggle to find affordable, trustworthy used books.', experiments: [{ id: 'x1', hypothesis: 'Students prefer local pickup', method: 'Landing page test', audience: '25 students', metric: '60% choose pickup', result: '58% chose pickup', status: 'validated' }, { id: 'x2', hypothesis: 'Verified condition increases trust', method: 'Interview', audience: '12 students', metric: '8 mention trust', result: '', status: 'running' }], feedback: [{ id: 'f1', comment: 'I want to see book condition before I pay.', source: 'Interview 1', consent: true }, { id: 'f2', comment: 'Pickup near campus would be convenient.', source: 'Survey 2', consent: true }, { id: 'f3', comment: 'The price is the biggest reason I would switch.', source: 'Interview 3', consent: true }], metrics: [{ week: 'W1', interviews: 4, signups: 12, repeat: 2, conversion: 16 }, { week: 'W2', interviews: 7, signups: 21, repeat: 5, conversion: 24 }], risks: [{ id: 'r1', title: 'Low trust between strangers', likelihood: 4, impact: 5, owner: 'Aisha', mitigation: 'Verified profiles and condition photos' }] }],
   notifications: [{ id: 'n1', userId: 'aisha', type: 'invites', title: 'New team invitation', body: 'Ben invited you to Climate Action Sprint.', read: false }, { id: 'n2', userId: 'aisha', type: 'tasks', title: 'Task due soon', body: 'Polish onboarding is due Friday.', read: false }],
   theme: 'light',
@@ -94,6 +99,94 @@ export const useStore = create(persist((set, get) => ({
     return { ...u, [kind]: { ...u[kind], lastSynced: 'Just now', source: kind === 'github' ? 'Auto' : 'Auto' } };
   }) })),
   addGoal: (goal) => set(s => ({ goals: [...s.goals, { ...goal, id: `g${Date.now()}`, userId: s.currentUserId, progress: 0 }] })),
+  addMentorSession: (session) => {
+    const created = { ...session, id: `ms${Date.now()}`, mentorId: get().currentUserId, status: 'OPEN', bookings: [] };
+    set(s => ({ mentorSessions: [...s.mentorSessions, created] }));
+    return created;
+  },
+  updateMentorSessionStatus: (sessionId, status) => set(s => ({
+    mentorSessions: s.mentorSessions.map(session =>
+      session.id === sessionId && session.mentorId === s.currentUserId
+        ? { ...session, status }
+        : session
+    ),
+  })),
+  bookMentorSession: (sessionId) => {
+    const s = get();
+    const session = s.mentorSessions.find(item => item.id === sessionId);
+    if (!session || session.status !== 'OPEN' || new Date(session.startsAt) <= new Date()) throw new Error('This session is no longer available.');
+    if (session.bookings.some(booking => booking.student?.id === s.currentUserId)) throw new Error('You already booked this session.');
+    if (session.bookings.length >= session.capacity) throw new Error('This session is full.');
+    const student = s.users.find(user => user.id === s.currentUserId);
+    set(state => ({
+      mentorSessions: state.mentorSessions.map(item => item.id === sessionId
+        ? { ...item, bookings: [...item.bookings, { id: `booking${Date.now()}`, student: { id: student.id, name: student.name }, createdAt: new Date().toISOString() }] }
+        : item),
+    }));
+  },
+  cancelSessionBooking: (sessionId) => set(s => ({
+    mentorSessions: s.mentorSessions.map(session => session.id === sessionId
+      ? { ...session, bookings: session.bookings.filter(booking => booking.student?.id !== s.currentUserId) }
+      : session),
+  })),
+  addMeetingNote: (sessionId, note) => {
+    const user = get().users.find(item => item.id === get().currentUserId);
+    const created = { ...note, id: `mn${Date.now()}`, sessionId, authorId: get().currentUserId, authorName: user?.name || 'Attendee', createdAt: new Date().toISOString() };
+    set(s => ({ meetingNotes: [...s.meetingNotes, created] }));
+    return created;
+  },
+  removeMeetingNote: (noteId) => set(s => ({
+    meetingNotes: s.meetingNotes.filter(note =>
+      note.id !== noteId || (note.authorId !== s.currentUserId && s.currentUserId !== 'mentor')
+    ),
+  })),
+  addMentorProject: (project) => {
+    const created = { ...project, id: `mp${Date.now()}`, mentorId: get().currentUserId, status: 'OPEN', createdAt: new Date().toISOString(), submissions: [] };
+    set(s => ({ mentorProjects: [created, ...s.mentorProjects] }));
+    return created;
+  },
+  updateMentorProjectStatus: (projectId, status) => set(s => ({
+    mentorProjects: s.mentorProjects.map(project =>
+      project.id === projectId && project.mentorId === s.currentUserId
+        ? { ...project, status }
+        : project
+    ),
+  })),
+  submitMentorProjectIdea: (projectId, idea) => {
+    const s = get();
+    const project = s.mentorProjects.find(item => item.id === projectId && item.status === 'OPEN');
+    if (!project) throw new Error('This project is no longer accepting ideas.');
+    if (project.submissions.some(submission => submission.studentId === s.currentUserId)) throw new Error('You have already submitted an idea for this project.');
+    const student = s.users.find(user => user.id === s.currentUserId);
+    const submission = { ...idea, id: `idea${Date.now()}`, studentId: s.currentUserId, student: { id: student.id, name: student.name }, status: 'PENDING', mentorFeedback: '', createdAt: new Date().toISOString() };
+    set(state => ({
+      mentorProjects: state.mentorProjects.map(item => item.id === projectId
+        ? { ...item, submissions: [...item.submissions, submission] }
+        : item),
+    }));
+    return submission;
+  },
+  resubmitMentorProjectIdea: (submissionId, idea) => {
+    let updatedSubmission;
+    set(s => ({
+      mentorProjects: s.mentorProjects.map(project => ({
+        ...project,
+        submissions: project.submissions.map(submission => {
+          if (submission.id !== submissionId || submission.studentId !== s.currentUserId || submission.status !== 'NEEDS_REVISION' || project.status !== 'OPEN') return submission;
+          updatedSubmission = { ...submission, ...idea, status: 'PENDING', mentorFeedback: '' };
+          return updatedSubmission;
+        }),
+      })),
+    }));
+    if (!updatedSubmission) throw new Error('This idea cannot be revised right now.');
+    return updatedSubmission;
+  },
+  reviewMentorProjectIdea: (submissionId, patch) => set(s => ({
+    mentorProjects: s.mentorProjects.map(project => project.mentorId === s.currentUserId
+      ? { ...project, submissions: project.submissions.map(submission =>
+        submission.id === submissionId ? { ...submission, ...patch } : submission) }
+      : project),
+  })),
   updateGoal: (goalId, patch) => set(s => ({
     goals: s.goals.map(goal =>
       goal.id === goalId && goal.userId === s.currentUserId
@@ -105,6 +198,12 @@ export const useStore = create(persist((set, get) => ({
     goals: s.goals.filter(goal => goal.id !== goalId || goal.userId !== s.currentUserId),
   })),
   addActivity: (activity) => set(s => ({ activities: [...s.activities, { ...activity, id: `a${Date.now()}`, userId: s.currentUserId }] })),
+  addCodingPracticeSession: (session) => set(s => ({
+    codingPracticeSessions: [
+      ...s.codingPracticeSessions,
+      { ...session, id: `practice-${Date.now()}`, userId: s.currentUserId, completedAt: new Date().toISOString() },
+    ],
+  })),
   addDeadline: (deadline) => set(s => ({ deadlines: [...s.deadlines, { ...deadline, id: `d${Date.now()}`, userId: s.currentUserId }] })),
   updateDeadline: (deadlineId, patch) => set(s => ({
     deadlines: s.deadlines.map(deadline =>

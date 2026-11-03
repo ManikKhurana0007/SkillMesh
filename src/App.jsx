@@ -9,8 +9,13 @@ import { createGoalPracticeQuiz, generateGoalPracticePlan, goalProgressBaseline,
 import { planTasks } from './lib/planner';
 import { builderScore } from './lib/builderScore';
 import { service } from "./services/api";
+import { MentorDashboard, MentorLeaderboard, MentorProjects, MentorSessions, StudentMentorSessions, StudentProjectIdeas } from './MentorWorkspace';
+import ProjectMentor from './ProjectMentor';
+import MeetingRoom from './MeetingRoom';
+import CodingPractice from './CodingPractice';
+import { MentorResumeStudents, StudentResumeWorkspace } from './ResumeWorkspace';
 
-const Icon = ({ name, size = 16 }) => { const C = { LayoutDashboard, CircleUserRound, Goal, Activity, CalendarDays, Sparkles, Target, Users, ClipboardList, Rocket, Bell, SettingsIcon, GraduationCap, BookOpen, Network, BarChart3, Code2, ShieldCheck, Lightbulb, Search, Menu, Moon, Sun, LogOut, Github, ExternalLink, Plus, ArrowRight, Check, ChevronRight }[name] || Sparkles; return <C size={size} strokeWidth={1.8} />; };
+const Icon = ({ name, size = 16 }) => { const C = { LayoutDashboard, CircleUserRound, Goal, Activity, CalendarDays, Sparkles, Target, Users, ClipboardList, Rocket, Bell, SettingsIcon, GraduationCap, BookOpen, Network, BarChart3, Code2, ShieldCheck, Lightbulb, Search, Menu, Moon, Sun, LogOut, Github, ExternalLink, Plus, ArrowRight, Check, ChevronRight, FileText }[name] || Sparkles; return <C size={size} strokeWidth={1.8} />; };
 const initials = n => n?.split(' ').map(x => x[0]).join('').slice(0, 2);
 function Button({ children, variant = 'primary', className = '', ...p }) { return <button className={`btn btn-${variant} ${className}`.trim()} {...p}>{children}</button>; }
 function Card({ children, className = '' }) { return <div className={`card ${className}`}>{children}</div>; }
@@ -21,9 +26,9 @@ function StatCard({ label, value, detail, icon }) { return <Card><div className=
 function Field({ label, children }) { return <div className="field"><label className="label">{label}</label>{children}</div>; }
 const FieldInput = p => <input className="input" {...p} />;
 
-const studentNav = [['Dashboard','/dashboard','LayoutDashboard'],['Profile','/profile','CircleUserRound'],['Goals','/goals','Goal'],['Activity Log','/activities','Activity'],['Deadlines','/deadlines','CalendarDays'],['AI Action Plan','/planner','Sparkles'],['Challenges','/challenges','Target'],['Find Teammates','/challenges','Users'],['Invitations','/invitations','Users'],['My Hackathons','/hackathons','Trophy'],['Projects','/projects','ClipboardList'],['Startup','/startups/s1','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
+const studentNav = [['Dashboard','/dashboard','LayoutDashboard'],['Profile','/profile','CircleUserRound'],['Resumes & career match','/resumes','FileText'],['AI Project Mentor','/project-mentor','Sparkles'],['Goals','/goals','Goal'],['Activity Log','/activities','Activity'],['Coding practice','/coding-practice','Code2'],['Deadlines','/deadlines','CalendarDays'],['AI Action Plan','/planner','Sparkles'],['Challenges','/challenges','Target'],['Find Teammates','/challenges','Users'],['Invitations','/invitations','Users'],['My Hackathons','/hackathons','Trophy'],['Projects','/projects','ClipboardList'],['Mentor sessions','/mentor-sessions','CalendarDays'],['Project ideas','/project-ideas','Lightbulb'],['Startup','/startups/s1','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
 const organizerNav = [['Dashboard','/organizer','LayoutDashboard'],['Challenges','/organizer/challenges','Target'],['Create Challenge','/organizer/challenges/new','Plus'],['Participants','/organizer/participants','Users'],['Teams','/organizer/teams','Network'],['Adaptive Formation','/organizer/teamforge','Sparkles'],['Approved Teams','/organizer/approved','ShieldCheck'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
-const mentorNav = [['Dashboard','/mentor','LayoutDashboard'],['Projects & Startups','/projects','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
+const mentorNav = [['Dashboard','/mentor','LayoutDashboard'],['Student resumes','/mentor/resumes','FileText'],['Sessions','/mentor/sessions','CalendarDays'],['Project ideas','/mentor/projects','Lightbulb'],['Student leaderboard','/mentor/leaderboard','BarChart3'],['Projects & Startups','/projects','Rocket'],['Notifications','/notifications','Bell'],['Settings','/settings','SettingsIcon']];
 const invitationsUpdatedEvent = 'skillmesh:invitations-updated';
 
 function publishPendingInvitationCount(invitations) {
@@ -189,7 +194,7 @@ function Auth({ register = false }) {
             const result = await service.googleLogin(response.credential);
             setAuthenticatedUser(result.user);
             toast.success(result.message);
-            nav('/dashboard');
+            nav(result.user.role === 'mentor' ? '/mentor' : result.user.role === 'organizer' ? '/organizer' : '/dashboard');
           } catch (error) {
             setAuthError(error.response?.data?.message || 'Google sign-in failed. Please try again.');
           } finally {
@@ -231,7 +236,7 @@ function Auth({ register = false }) {
   const finishSignIn = (response) => {
     setAuthenticatedUser(response.user);
     toast.success(response.message);
-    nav('/dashboard');
+    nav(response.user.role === 'mentor' ? '/mentor' : response.user.role === 'organizer' ? '/organizer' : '/dashboard');
   };
 
   const submit = async event => {
@@ -545,6 +550,10 @@ function Dashboard() {
       subtitle="Your growth graph is moving. Here’s the clearest next step."
       action={<Button onClick={() => { setActivityError(''); setShowProgressForm(open => !open); }}><Plus size={14}/> Log progress</Button>}
     />
+    <Card className="dashboard-project-mentor">
+      <div><span className="project-mentor-eyebrow"><Sparkles size={13}/> STUDENT PROJECT MENTOR</span><h2>Turn a project idea into something you can ship</h2><p>Get skill-matched recommendations, AI-generated roadmaps, team task tracking, and repository feedback.</p></div>
+      <Link className="btn btn-primary" to="/project-mentor">Open Project Mentor <ArrowRight size={14}/></Link>
+    </Card>
     {showProgressForm && <Card style={{ marginBottom: 14 }}>
       <div className="row between"><h2>Log learning progress</h2><Button type="button" variant="secondary" onClick={() => setShowProgressForm(false)}>Cancel</Button></div>
       <form onSubmit={logProgress}>
@@ -751,8 +760,49 @@ const [profileResponse, repoResponse, commitsResponse] =
 function Profile({ viewId }) {
   const store = useStore();
   const user = store.users.find(item => item.id === viewId) || currentUser(store);
-  if (!user || user.id !== store.currentUserId) return <LegacyProfile viewId={viewId}/>;
-  return <OwnProfile key={user.id} user={user}/>;
+  if (viewId && viewId !== store.currentUserId) return <><LegacyProfile viewId={viewId}/><PublicProjectShowcase userId={viewId}/></>;
+  if (!user) return <LegacyProfile viewId={viewId}/>;
+  return <><OwnProfile key={`${user.id}-${user.github?.username || 'unlinked'}`} user={user}/><PublishedProjectShowcase/></>;
+}
+
+function PublishedProjectShowcase() {
+  const user = currentUser(useStore());
+  const [projects, setProjects] = useState([]);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    service.getProjectMentorWorkspace()
+      .then(({ projects: items }) => { if (active) setProjects(items.filter(project => project.ownerId === user.id && project.showcasedAt)); })
+      .catch(requestError => { if (active) setError(requestError.response?.data?.error?.message || 'Could not load published projects.'); });
+    return () => { active = false; };
+  }, []);
+  return <Card style={{ marginTop: 14 }}>
+    <div className="row between"><h2>Project showcase</h2><Link className="accent muted" to="/project-mentor">Manage projects</Link></div>
+    {error ? <p role="alert">{error}</p> : projects.length ? projects.map(project => <div className="list-item" key={project.id}>
+      <div className="row between"><b>{project.name}</b>{Number.isInteger(project.qualityScore) && <Badge tone="purple">Quality evidence · {project.qualityScore}/100</Badge>}</div>
+      <p>{project.description}</p>
+      <a className="accent" href={project.showcaseUrl || project.githubUrl} target="_blank" rel="noreferrer">View project <ExternalLink size={12}/></a>
+    </div>) : <p className="muted">Completed projects you publish will appear here.</p>}
+  </Card>;
+}
+
+function PublicProjectShowcase({ userId }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let active = true;
+    service.getPublicProjectShowcase(userId).then(response => { if (active) setData(response); })
+      .catch(() => { if (active) setData({ projects: [] }); });
+    return () => { active = false; };
+  }, [userId]);
+  if (!data?.projects?.length) return null;
+  return <Card style={{ marginTop: 14 }}>
+    <h2>{data.user.name}'s project showcase</h2>
+    {data.projects.map(project => <div className="list-item" key={project.id}>
+      <div className="row between"><b>{project.name}</b>{Number.isInteger(project.qualityScore) && <Badge tone="purple">Quality evidence · {project.qualityScore}/100</Badge>}</div>
+      <p>{project.description}</p>
+      <a className="accent" href={project.showcaseUrl || project.githubUrl} target="_blank" rel="noreferrer">View project <ExternalLink size={12}/></a>
+    </div>)}
+  </Card>;
 }
 
 function OwnProfile({ user }) {
@@ -760,7 +810,7 @@ function OwnProfile({ user }) {
   const [profile, setProfile] = useState(null), [edit, setEdit] = useState(null);
   const [loading, setLoading] = useState(true), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [interest, setInterest] = useState(''), [skillName, setSkillName] = useState(''), [skillLevel, setSkillLevel] = useState('Intermediate'), [skillEvidence, setSkillEvidence] = useState('');
-  const [evidenceTitle, setEvidenceTitle] = useState(''), [evidenceUrl, setEvidenceUrl] = useState(''), [activityMinutes, setActivityMinutes] = useState(30), [githubUsername, setGithubUsername] = useState(user.github?.username || ''), [githubError, setGithubError] = useState(''), [githubLoading, setGithubLoading] = useState(false);
+  const [evidenceTitle, setEvidenceTitle] = useState(''), [evidenceUrl, setEvidenceUrl] = useState(''), [activityMinutes, setActivityMinutes] = useState(30), [githubUsername, setGithubUsername] = useState(user.github?.username || ''), [githubError, setGithubError] = useState(''), [githubLoading, setGithubLoading] = useState(false), [githubUnlinking, setGithubUnlinking] = useState(false);
   const roles = ['Frontend','Backend','Product','Design','ML Engineer','DevOps','Mobile'];
   const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const slots = [{ id:'AM', label:'Morning' },{ id:'PM', label:'Afternoon' },{ id:'EVENING', label:'Evening' }];
@@ -852,11 +902,15 @@ function OwnProfile({ user }) {
       ]);
       const githubProfile = profileResponse.profile;
       const repositories = repoResponse.repositories;
+      const commitCount = commitsResponse?.commits;
+      if (!Number.isSafeInteger(commitCount) || commitCount < 0) {
+        throw new Error('GitHub returned an invalid commit count. Please try again later.');
+      }
       const topLanguages = [...new Set(repositories.map(repo => repo.language).filter(Boolean))];
       const github = {
         username: githubProfile.username || username,
         repos: Number(githubProfile.publicRepositories) || Number(repoResponse.count) || repositories.length,
-        commits: Number(commitsResponse.commits) || 0,
+        commits: commitCount,
         stars: repositories.reduce((total, repo) => total + (Number(repo.stars) || 0), 0),
         languages: topLanguages.length,
         topLanguages,
@@ -877,6 +931,18 @@ function OwnProfile({ user }) {
       setGithubError(requestError.response?.data?.message || requestError.response?.data?.error?.message || requestError.message || 'Could not sync GitHub profile.');
     } finally { setGithubLoading(false); }
   };
+  const unlinkGitHub = async () => {
+    setGithubUnlinking(true); setGithubError('');
+    try {
+      const response = await service.saveGitHubStats(null);
+      setProfile(response.profile);
+      setGithubUsername('');
+      updateStoreProfile({ ...response.user, ...response.profile, profileEvidenceCount: response.profile.evidence.length });
+      toast.success('GitHub account unlinked.');
+    } catch (requestError) {
+      setGithubError(requestError.response?.data?.error?.message || 'Could not unlink GitHub. Please try again.');
+    } finally { setGithubUnlinking(false); }
+  };
   const score = profile ? builderScore({
     ...profile,
     profileEvidenceCount: profile.evidence.length,
@@ -885,7 +951,7 @@ function OwnProfile({ user }) {
   }) : null;
   if (loading) return <Card><p>Loading your saved profile...</p></Card>;
   if (error && !profile) return <Card><p>{error}</p><Button variant="secondary" onClick={refreshProfile}>Retry</Button></Card>;
-  return <><PageHeader title="My profile" subtitle="Edit your profile, availability, evidence, and the real signals behind your Builder Score." action={<Button onClick={saveAbout} disabled={saving || !edit}>{saving?'Saving...':<><Check size={14}/> Save about</>}</Button>}/>{error&&<Card style={{marginBottom:14}}><p role="alert">{error}</p></Card>}<div className="grid grid-2"><Card><h2>About</h2><div className="grid grid-2"><Field label="Education"><FieldInput value={edit?.education||''} onChange={event=>setEdit({...edit,education:event.target.value})} placeholder="Degree or education"/></Field><Field label="Career goal"><FieldInput value={edit?.careerGoal||''} onChange={event=>setEdit({...edit,careerGoal:event.target.value})} placeholder="What do you want to build?"/></Field></div><Field label="Interests"><div className="row"><FieldInput value={interest} onChange={event=>setInterest(event.target.value)} onKeyDown={event=>event.key==='Enter'&&(event.preventDefault(),edit.interests.includes(interest.trim())?setInterest(''):setEdit({...edit,interests:[...edit.interests,interest.trim()]}))} placeholder="Add an interest"/><Button type="button" variant="secondary" onClick={()=>{const value=interest.trim();if(value&&!edit.interests.includes(value))setEdit({...edit,interests:[...edit.interests,value]});setInterest('')}}><Plus size={14}/></Button></div><div className="row" style={{flexWrap:'wrap',marginTop:7}}>{edit?.interests.map(value=><button type="button" className="badge badge-purple" key={value} onClick={()=>setEdit({...edit,interests:edit.interests.filter(item=>item!==value)})}>{value} <X size={11}/></button>)}</div></Field><Field label="Preferred roles"><div className="row" style={{flexWrap:'wrap'}}>{roles.map(role=><label className="badge" key={role}><input type="checkbox" checked={edit?.preferredRoles.includes(role)||false} onChange={event=>setEdit({...edit,preferredRoles:event.target.checked?[...edit.preferredRoles,role]:edit.preferredRoles.filter(item=>item!==role)})}/>{role}</label>)}</div></Field><h2 style={{marginTop:18}}>Skills manager</h2><div className="grid grid-2"><Field label="Skill"><FieldInput value={skillName} onChange={event=>setSkillName(event.target.value)} placeholder="e.g. React"/></Field><Field label="Proficiency"><select className="select" value={skillLevel} onChange={event=>setSkillLevel(event.target.value)}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field></div><Field label="Evidence URL (optional)"><FieldInput value={skillEvidence} onChange={event=>setSkillEvidence(event.target.value)} placeholder="https://..."/></Field><Button onClick={addSkill}><Plus size={14}/> Save skill</Button>{profile.skills.map(skill=><div className="list-item row between" key={skill.id}><div><b>{skill.name}</b><p>{skill.level}{skill.evidence?` · ${skill.evidence}`:''}</p></div><Button variant="danger" onClick={()=>removeSkill(skill)}>Remove</Button></div>)}</Card><Card><div className="row between"><div><h2>Builder Score</h2><p>Evidence-based profile signal, not a judgment of ability.</p></div><Badge tone={score.total>=85?'purple':score.total>=65?'green':'amber'}>{score.total} · {score.tier}</Badge></div><div className="list" style={{marginTop:14}}>{score.components.map(component=><div key={component.key}><div className="row between"><span className="muted">{component.label} · {Math.round(component.weight*100)}%</span><span className="muted">{component.noAttempts ? `No quiz attempts (neutral ${component.value}/100)` : `${component.value}/100`}</span></div><div className="progress"><span style={{width:`${component.value}%`}}/></div></div>)}</div><details style={{marginTop:14}} open><summary className="muted">How this score is calculated (v4)</summary><p><b>Builder Score</b> = 25% quiz performance + 15% GitHub activity + 25% skill strength + 15% evidence + 10% consistency + 10% profile completeness. The 90-day average of completed quiz scores is used; with no quiz attempts, that component starts at a neutral 50. Each component is scored 0-100, weighted, summed, and rounded.</p><p>GitHub activity uses a capped logarithmic scale: repos + stars/12 + 2* public commits in the last 30 days, normalized to 40 repos, 500 stars, and 120 commits. Unlinked GitHub receives a neutral 50.</p><p>Skill strength averages Beginner 40, Intermediate 70, Advanced 100. Evidence is 20 points per saved evidence URL, capped at 5 links. Consistency is active logged days in the last 30 days divided by 12, capped at 100. Profile completeness gives equal credit for education, career goal, interests, preferred roles, at least one skill, and at least one availability slot.</p><p>Tiers: Starter 0-39, Builder 40-64, Contributor 65-84, Pro 85-100.</p></details><h3 style={{marginTop:16}}>Activity for consistency</h3><p>{profile.stats.recentActivityDays} active days and {profile.stats.recentActivityMinutes} logged minutes in the last 30 days.</p><div className="row"><select className="select" style={{maxWidth:150}} value={activityMinutes} onChange={event=>setActivityMinutes(event.target.value)}><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option></select><Button variant="secondary" onClick={logActivity}>Log learning session</Button></div></Card></div><div className="grid grid-2" style={{marginTop:14}}><Card><div className="row between"><div className="row"><div className="avatar"><Github size={16}/></div><div><h2 style={{margin:0}}>GitHub</h2>{profile.github&&<a className="accent" href={profile.github.publicProfileUrl} target="_blank" rel="noreferrer">@{profile.github.username} <ExternalLink size={11}/></a>}</div></div><Badge tone={profile.github?'green':'amber'}>{profile.github?'Synced':'Not linked'}</Badge></div>{profile.github?<><div className="grid grid-3" style={{margin:'16px 0'}}><div><span className="muted">Repos</span><div className="stat-value">{profile.github.repos}</div></div><div><span className="muted">Stars</span><div className="stat-value">{profile.github.stars}</div></div><div><span className="muted">Commits (30d)</span><div className="stat-value">{profile.github.commits}</div></div></div><div className="row" style={{flexWrap:'wrap'}}>{profile.github.topLanguages.map(language=><Badge tone="purple" key={language}>{language}</Badge>)}</div><div className="row between" style={{marginTop:16}}><span className="muted">Last synced: {profile.github.lastSynced}</span><Button variant="secondary" onClick={()=>syncGitHub(profile.github.username)} disabled={githubLoading}>{githubLoading?'Refreshing...':'Refresh GitHub'}</Button></div></>:<><p>Link GitHub to add live public repository, star, language, and recent-commit statistics.</p><Field label="GitHub username or profile URL"><FieldInput value={githubUsername} onChange={event=>{setGithubUsername(event.target.value);setGithubError('')}} placeholder="github.com/username"/></Field>{githubError&&<p role="alert" style={{color:'#b91c1c'}}>{githubError}</p>}<Button onClick={()=>syncGitHub(githubUsername.trim())} disabled={githubLoading||!githubUsername.trim()}>{githubLoading?'Syncing...':'Connect GitHub'}</Button></>}</Card><Card><h2>Profile evidence</h2><p>Add project, portfolio, certificate, or other links. Evidence is persisted and contributes to your score.</p><form onSubmit={addEvidence}><Field label="Title"><FieldInput value={evidenceTitle} onChange={event=>setEvidenceTitle(event.target.value)} placeholder="Project, certificate, portfolio..."/></Field><Field label="URL"><FieldInput type="url" value={evidenceUrl} onChange={event=>setEvidenceUrl(event.target.value)} placeholder="https://..."/></Field><Button disabled={!evidenceTitle.trim()||!evidenceUrl.trim()}><Plus size={14}/> Add evidence</Button></form>{profile.evidence.length===0?<p className="muted" style={{marginTop:12}}>No evidence links yet.</p>:profile.evidence.map(item=><div className="list-item row between" key={item.id}><div><a href={item.url} target="_blank" rel="noreferrer" className="accent">{item.title} <ExternalLink size={12}/></a><p>{item.kind} · {new Date(item.createdAt).toLocaleDateString()}</p></div><Button variant="danger" onClick={()=>removeEvidence(item.id)} aria-label={`Remove ${item.title}`}>Remove</Button></div>)}</Card></div><Card style={{marginTop:14}}><div className="row between"><div><h2>Weekly availability</h2><p>Select the times you’re generally available. Changes save automatically.</p></div><Badge tone="purple">{profile.availability.length} slots · about {profile.availability.length*2}h/week</Badge></div><div className="availability-grid"><div className="availability-row availability-heading"><span>Day</span>{slots.map(slot=><span key={slot.id}>{slot.label}</span>)}</div>{days.map((day,index)=><div className="availability-row" key={day}><b>{day}</b>{slots.map(slot=>{const selected=profile.availability.some(item=>item.dayOfWeek===index&&item.slot===slot.id);return <label className={`availability-toggle ${selected?'selected':''}`} key={slot.id}><input type="checkbox" checked={selected} onChange={()=>toggleAvailability(index,slot.id)} aria-label={`${day} ${slot.label}`}/><span>{selected?'Available':'—'}</span></label>})}</div>)}</div><p className="muted">Weekly schedule is used for team matching. It is not treated as proof of work or as a score by itself.</p></Card></>;
+  return <><PageHeader title="My profile" subtitle="Edit your profile, availability, evidence, and the real signals behind your Builder Score." action={<Button onClick={saveAbout} disabled={saving || !edit}>{saving?'Saving...':<><Check size={14}/> Save about</>}</Button>}/>{error&&<Card style={{marginBottom:14}}><p role="alert">{error}</p></Card>}<div className="grid grid-2"><Card><h2>About</h2><div className="grid grid-2"><Field label="Education"><FieldInput value={edit?.education||''} onChange={event=>setEdit({...edit,education:event.target.value})} placeholder="Degree or education"/></Field><Field label="Career goal"><FieldInput value={edit?.careerGoal||''} onChange={event=>setEdit({...edit,careerGoal:event.target.value})} placeholder="What do you want to build?"/></Field></div><Field label="Interests"><div className="row"><FieldInput value={interest} onChange={event=>setInterest(event.target.value)} onKeyDown={event=>event.key==='Enter'&&(event.preventDefault(),edit.interests.includes(interest.trim())?setInterest(''):setEdit({...edit,interests:[...edit.interests,interest.trim()]}))} placeholder="Add an interest"/><Button type="button" variant="secondary" onClick={()=>{const value=interest.trim();if(value&&!edit.interests.includes(value))setEdit({...edit,interests:[...edit.interests,value]});setInterest('')}}><Plus size={14}/></Button></div><div className="row" style={{flexWrap:'wrap',marginTop:7}}>{edit?.interests.map(value=><button type="button" className="badge badge-purple" key={value} onClick={()=>setEdit({...edit,interests:edit.interests.filter(item=>item!==value)})}>{value} <X size={11}/></button>)}</div></Field><Field label="Preferred roles"><div className="row" style={{flexWrap:'wrap'}}>{roles.map(role=><label className="badge" key={role}><input type="checkbox" checked={edit?.preferredRoles.includes(role)||false} onChange={event=>setEdit({...edit,preferredRoles:event.target.checked?[...edit.preferredRoles,role]:edit.preferredRoles.filter(item=>item!==role)})}/>{role}</label>)}</div></Field><h2 style={{marginTop:18}}>Skills manager</h2><div className="grid grid-2"><Field label="Skill"><FieldInput value={skillName} onChange={event=>setSkillName(event.target.value)} placeholder="e.g. React"/></Field><Field label="Proficiency"><select className="select" value={skillLevel} onChange={event=>setSkillLevel(event.target.value)}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field></div><Field label="Evidence URL (optional)"><FieldInput value={skillEvidence} onChange={event=>setSkillEvidence(event.target.value)} placeholder="https://..."/></Field><Button onClick={addSkill}><Plus size={14}/> Save skill</Button>{profile.skills.map(skill=><div className="list-item row between" key={skill.id}><div><b>{skill.name}</b><p>{skill.level}{skill.evidence?` · ${skill.evidence}`:''}</p></div><Button variant="danger" onClick={()=>removeSkill(skill)}>Remove</Button></div>)}</Card><Card><div className="row between"><div><h2>Builder Score</h2><p>Evidence-based profile signal, not a judgment of ability.</p></div><Badge tone={score.total>=85?'purple':score.total>=65?'green':'amber'}>{score.total} · {score.tier}</Badge></div><div className="list" style={{marginTop:14}}>{score.components.map(component=><div key={component.key}><div className="row between"><span className="muted">{component.label} · {Math.round(component.weight*100)}%</span><span className="muted">{component.noAttempts ? `No quiz attempts (neutral ${component.value}/100)` : `${component.value}/100`}</span></div><div className="progress"><span style={{width:`${component.value}%`}}/></div></div>)}</div><details style={{marginTop:14}} open><summary className="muted">How this score is calculated (v4)</summary><p><b>Builder Score</b> = 25% quiz performance + 15% GitHub activity + 25% skill strength + 15% evidence + 10% consistency + 10% profile completeness. The 90-day average of completed quiz scores is used; with no quiz attempts, that component starts at a neutral 50. Each component is scored 0-100, weighted, summed, and rounded.</p><p>GitHub activity uses a capped logarithmic scale: repos + stars/12 + 2* public commits in the last 30 days, normalized to 40 repos, 500 stars, and 120 commits. Unlinked GitHub receives a neutral 50.</p><p>Skill strength averages Beginner 40, Intermediate 70, Advanced 100. Evidence is 20 points per saved evidence URL, capped at 5 links. Consistency is active logged days in the last 30 days divided by 12, capped at 100. Profile completeness gives equal credit for education, career goal, interests, preferred roles, at least one skill, and at least one availability slot.</p><p>Tiers: Starter 0-39, Builder 40-64, Contributor 65-84, Pro 85-100.</p></details><h3 style={{marginTop:16}}>Activity for consistency</h3><p>{profile.stats.recentActivityDays} active days and {profile.stats.recentActivityMinutes} logged minutes in the last 30 days.</p><div className="row"><select className="select" style={{maxWidth:150}} value={activityMinutes} onChange={event=>setActivityMinutes(event.target.value)}><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option></select><Button variant="secondary" onClick={logActivity}>Log learning session</Button></div></Card></div><div className="grid grid-2" style={{marginTop:14}}><Card><div className="row between"><div className="row"><div className="avatar"><Github size={16}/></div><div><h2 style={{margin:0}}>GitHub</h2>{profile.github&&<a className="accent" href={profile.github.publicProfileUrl} target="_blank" rel="noreferrer">@{profile.github.username} <ExternalLink size={11}/></a>}</div></div><Badge tone={profile.github?'green':'amber'}>{profile.github?'Synced':'Not linked'}</Badge></div>{profile.github?<><div className="grid grid-3" style={{margin:'16px 0'}}><div><span className="muted">Repos</span><div className="stat-value">{profile.github.repos}</div></div><div><span className="muted">Stars</span><div className="stat-value">{profile.github.stars}</div></div><div><span className="muted">Public commits (30d)</span><div className="stat-value">{Number.isSafeInteger(profile.github.commits)?profile.github.commits.toLocaleString():'Unavailable'}</div></div></div><div className="row" style={{flexWrap:'wrap'}}>{profile.github.topLanguages.map(language=><Badge tone="purple" key={language}>{language}</Badge>)}</div><div className="row between project-github-actions" style={{marginTop:16}}><span className="muted">Last synced: {profile.github.lastSynced}</span><div className="row"><Button variant="secondary" onClick={()=>syncGitHub(profile.github.username)} disabled={githubLoading||githubUnlinking}>{githubLoading?'Refreshing...':'Refresh GitHub'}</Button><Button type="button" variant="danger" onClick={unlinkGitHub} disabled={githubLoading||githubUnlinking}>{githubUnlinking?'Unlinking...':'Unlink'}</Button></div></div>{githubError&&<p role="alert" style={{color:'#b91c1c',marginTop:8}}>{githubError}</p>}</>:<><p>Link GitHub to add live public repository, star, language, and recent-commit statistics.</p><Field label="GitHub username or profile URL"><FieldInput value={githubUsername} onChange={event=>{setGithubUsername(event.target.value);setGithubError('')}} placeholder="github.com/username"/></Field>{githubError&&<p role="alert" style={{color:'#b91c1c'}}>{githubError}</p>}<Button onClick={()=>syncGitHub(githubUsername.trim())} disabled={githubLoading||!githubUsername.trim()}>{githubLoading?'Syncing...':'Connect GitHub'}</Button></>}</Card><Card><h2>Profile evidence</h2><p>Add project, portfolio, certificate, or other links. Evidence is persisted and contributes to your score.</p><form onSubmit={addEvidence}><Field label="Title"><FieldInput value={evidenceTitle} onChange={event=>setEvidenceTitle(event.target.value)} placeholder="Project, certificate, portfolio..."/></Field><Field label="URL"><FieldInput type="url" value={evidenceUrl} onChange={event=>setEvidenceUrl(event.target.value)} placeholder="https://..."/></Field><Button disabled={!evidenceTitle.trim()||!evidenceUrl.trim()}><Plus size={14}/> Add evidence</Button></form>{profile.evidence.length===0?<p className="muted" style={{marginTop:12}}>No evidence links yet.</p>:profile.evidence.map(item=><div className="list-item row between" key={item.id}><div><a href={item.url} target="_blank" rel="noreferrer" className="accent">{item.title} <ExternalLink size={12}/></a><p>{item.kind} · {new Date(item.createdAt).toLocaleDateString()}</p></div><Button variant="danger" onClick={()=>removeEvidence(item.id)} aria-label={`Remove ${item.title}`}>Remove</Button></div>)}</Card></div><Card style={{marginTop:14}}><div className="row between"><div><h2>Weekly availability</h2><p>Select the times you’re generally available. Changes save automatically.</p></div><Badge tone="purple">{profile.availability.length} slots · about {profile.availability.length*2}h/week</Badge></div><div className="availability-grid"><div className="availability-row availability-heading"><span>Day</span>{slots.map(slot=><span key={slot.id}>{slot.label}</span>)}</div>{days.map((day,index)=><div className="availability-row" key={day}><b>{day}</b>{slots.map(slot=>{const selected=profile.availability.some(item=>item.dayOfWeek===index&&item.slot===slot.id);return <label className={`availability-toggle ${selected?'selected':''}`} key={slot.id}><input type="checkbox" checked={selected} onChange={()=>toggleAvailability(index,slot.id)} aria-label={`${day} ${slot.label}`}/><span>{selected?'Available':'—'}</span></label>})}</div>)}</div><p className="muted">Weekly schedule is used for team matching. It is not treated as proof of work or as a score by itself.</p></Card></>;
 }
 
 function Goals() {
@@ -2342,6 +2408,62 @@ function SimpleGuard({ roles, children }) { const s=useStore(),u=currentUser(s);
 function Page({children}) { return <Shell>{children}</Shell>; }
 function StudentProfileRoute() { const { id } = useParams(); return <Page><Profile viewId={id}/></Page>; }
 function StartupRoute() { const { tab } = useParams(); return <Page><Startup tab={tab}/></Page>; }
-function App() { return <Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<Auth/>}/><Route path="/register" element={<Auth register/>}/><Route path="/dashboard" element={<SimpleGuard roles={['student','organizer','mentor']}><Page><Dashboard/></Page></SimpleGuard>}/><Route path="/profile" element={<SimpleGuard roles={['student']}><Page><Profile/></Page></SimpleGuard>}/><Route path="/students/:id" element={<SimpleGuard roles={['student','organizer']}><StudentProfileRoute/></SimpleGuard>}/><Route path="/goals" element={<SimpleGuard roles={['student']}><Page><Goals/></Page></SimpleGuard>}/><Route path="/activities" element={<SimpleGuard roles={['student']}><Page><Activities/></Page></SimpleGuard>}/><Route path="/deadlines" element={<SimpleGuard roles={['student']}><Page><Deadlines/></Page></SimpleGuard>}/><Route path="/planner" element={<SimpleGuard roles={['student']}><Page><Planner/></Page></SimpleGuard>}/><Route path="/challenges" element={<SimpleGuard roles={['student']}><Page><Challenges/></Page></SimpleGuard>}/><Route path="/challenges/:id" element={<SimpleGuard roles={['student']}><Page><ChallengeDetail/></Page></SimpleGuard>}/><Route path="/challenges/:id/find-teammates" element={<SimpleGuard roles={['student']}><Page><FindTeammates/></Page></SimpleGuard>}/><Route path="/challenges/:id/my-team" element={<SimpleGuard roles={['student']}><Page><Hackathons/></Page></SimpleGuard>}/><Route path="/invitations" element={<SimpleGuard roles={['student']}><Page><Invitations/></Page></SimpleGuard>}/><Route path="/hackathons" element={<SimpleGuard roles={['student']}><Page><Hackathons/></Page></SimpleGuard>}/><Route path="/projects" element={<SimpleGuard roles={['student','mentor']}><Page><Projects/></Page></SimpleGuard>}/><Route path="/projects/:id" element={<SimpleGuard roles={['student','mentor']}><Page><ProjectDetail/></Page></SimpleGuard>}/><Route path="/startups/:id" element={<SimpleGuard roles={['student','mentor']}><Page><Startup/></Page></SimpleGuard>}/><Route path="/startups/:id/:tab" element={<SimpleGuard roles={['student','mentor']}><StartupRoute/></SimpleGuard>}/><Route path="/notifications" element={<SimpleGuard roles={['student','organizer','mentor']}><Page><Notifications/></Page></SimpleGuard>}/><Route path="/settings" element={<SimpleGuard roles={['student','organizer','mentor']}><Page><Settings/></Page></SimpleGuard>}/><Route path="/organizer" element={<SimpleGuard roles={['organizer']}><Page><Organizer/></Page></SimpleGuard>}/><Route path="/organizer/challenges" element={<SimpleGuard roles={['organizer']}><Page><OrganizerChallenges/></Page></SimpleGuard>}/><Route path="/organizer/challenges/new" element={<SimpleGuard roles={['organizer']}><Page><ChallengeEditor/></Page></SimpleGuard>}/><Route path="/organizer/challenges/:id/edit" element={<SimpleGuard roles={['organizer']}><Page><ChallengeEditor/></Page></SimpleGuard>}/><Route path="/organizer/participants" element={<SimpleGuard roles={['organizer']}><Page><Participants/></Page></SimpleGuard>}/><Route path="/organizer/teams" element={<SimpleGuard roles={['organizer']}><Page><Teams/></Page></SimpleGuard>}/><Route path="/organizer/teamforge" element={<SimpleGuard roles={['organizer']}><Page><TeamForgeStudio/></Page></SimpleGuard>}/><Route path="/organizer/approved" element={<SimpleGuard roles={['organizer']}><Page><Teams approved/></Page></SimpleGuard>}/><Route path="/organizer/challenges/:id/participants" element={<SimpleGuard roles={['organizer']}><Page><Participants/></Page></SimpleGuard>}/><Route path="/organizer/challenges/:id/teams" element={<SimpleGuard roles={['organizer']}><Page><Teams/></Page></SimpleGuard>}/><Route path="/organizer/challenges/:id/teamforge" element={<SimpleGuard roles={['organizer']}><Page><TeamForgeStudio/></Page></SimpleGuard>}/><Route path="/organizer/challenges/:id/approved" element={<SimpleGuard roles={['organizer']}><Page><Teams approved/></Page></SimpleGuard>}/><Route path="/mentor" element={<SimpleGuard roles={['mentor']}><Page><Organizer/></Page></SimpleGuard>}/><Route path="*" element={<Page><PageHeader title="404 · Page not found" subtitle="Try a workspace link from the sidebar."/></Page>}/></Routes> }
+function DashboardRedirect() {
+  const user = currentUser(useStore());
+  return <Navigate replace to={user?.role === 'mentor' ? '/mentor' : user?.role === 'organizer' ? '/organizer' : '/dashboard'}/>;
+}
+
+function App() {
+  return <Routes>
+    <Route path="/" element={<Landing/>}/>
+    <Route path="/login" element={<Auth/>}/>
+    <Route path="/register" element={<Auth register/>}/>
+    <Route path="/dashboarb" element={<DashboardRedirect/>}/>
+    <Route path="/dashboard" element={<SimpleGuard roles={['student','organizer','mentor']}><Page><Dashboard/></Page></SimpleGuard>}/>
+    <Route path="/profile" element={<SimpleGuard roles={['student']}><Page><Profile/></Page></SimpleGuard>}/>
+    <Route path="/resumes" element={<SimpleGuard roles={['student']}><Page><StudentResumeWorkspace/></Page></SimpleGuard>}/>
+    <Route path="/project-mentor" element={<SimpleGuard roles={['student']}><Page><ProjectMentor/></Page></SimpleGuard>}/>
+    <Route path="/students/:id" element={<SimpleGuard roles={['student','organizer','mentor']}><StudentProfileRoute/></SimpleGuard>}/>
+    <Route path="/goals" element={<SimpleGuard roles={['student']}><Page><Goals/></Page></SimpleGuard>}/>
+    <Route path="/activities" element={<SimpleGuard roles={['student']}><Page><Activities/></Page></SimpleGuard>}/>
+    <Route path="/coding-practice" element={<SimpleGuard roles={['student']}><Page><CodingPractice/></Page></SimpleGuard>}/>
+    <Route path="/deadlines" element={<SimpleGuard roles={['student']}><Page><Deadlines/></Page></SimpleGuard>}/>
+    <Route path="/planner" element={<SimpleGuard roles={['student']}><Page><Planner/></Page></SimpleGuard>}/>
+    <Route path="/challenges" element={<SimpleGuard roles={['student']}><Page><Challenges/></Page></SimpleGuard>}/>
+    <Route path="/challenges/:id" element={<SimpleGuard roles={['student']}><Page><ChallengeDetail/></Page></SimpleGuard>}/>
+    <Route path="/challenges/:id/find-teammates" element={<SimpleGuard roles={['student']}><Page><FindTeammates/></Page></SimpleGuard>}/>
+    <Route path="/challenges/:id/my-team" element={<SimpleGuard roles={['student']}><Page><Hackathons/></Page></SimpleGuard>}/>
+    <Route path="/invitations" element={<SimpleGuard roles={['student']}><Page><Invitations/></Page></SimpleGuard>}/>
+    <Route path="/hackathons" element={<SimpleGuard roles={['student']}><Page><Hackathons/></Page></SimpleGuard>}/>
+    <Route path="/mentor-sessions" element={<SimpleGuard roles={['student']}><Page><StudentMentorSessions/></Page></SimpleGuard>}/>
+    <Route path="/project-ideas" element={<SimpleGuard roles={['student']}><Page><StudentProjectIdeas/></Page></SimpleGuard>}/>
+    <Route path="/projects" element={<SimpleGuard roles={['student','mentor']}><Page><Projects/></Page></SimpleGuard>}/>
+    <Route path="/projects/:id" element={<SimpleGuard roles={['student','mentor']}><Page><ProjectDetail/></Page></SimpleGuard>}/>
+    <Route path="/startups/:id" element={<SimpleGuard roles={['student','mentor']}><Page><Startup/></Page></SimpleGuard>}/>
+    <Route path="/startups/:id/:tab" element={<SimpleGuard roles={['student','mentor']}><StartupRoute/></SimpleGuard>}/>
+    <Route path="/notifications" element={<SimpleGuard roles={['student','organizer','mentor']}><Page><Notifications/></Page></SimpleGuard>}/>
+    <Route path="/settings" element={<SimpleGuard roles={['student','organizer','mentor']}><Page><Settings/></Page></SimpleGuard>}/>
+    <Route path="/organizer" element={<SimpleGuard roles={['organizer']}><Page><Organizer/></Page></SimpleGuard>}/>
+    <Route path="/organizer/challenges" element={<SimpleGuard roles={['organizer']}><Page><OrganizerChallenges/></Page></SimpleGuard>}/>
+    <Route path="/organizer/challenges/new" element={<SimpleGuard roles={['organizer']}><Page><ChallengeEditor/></Page></SimpleGuard>}/>
+    <Route path="/organizer/challenges/:id/edit" element={<SimpleGuard roles={['organizer']}><Page><ChallengeEditor/></Page></SimpleGuard>}/>
+    <Route path="/organizer/participants" element={<SimpleGuard roles={['organizer']}><Page><Participants/></Page></SimpleGuard>}/>
+    <Route path="/organizer/teams" element={<SimpleGuard roles={['organizer']}><Page><Teams/></Page></SimpleGuard>}/>
+    <Route path="/organizer/teamforge" element={<SimpleGuard roles={['organizer']}><Page><TeamForgeStudio/></Page></SimpleGuard>}/>
+    <Route path="/organizer/approved" element={<SimpleGuard roles={['organizer']}><Page><Teams approved/></Page></SimpleGuard>}/>
+    <Route path="/organizer/challenges/:id/participants" element={<SimpleGuard roles={['organizer']}><Page><Participants/></Page></SimpleGuard>}/>
+    <Route path="/organizer/challenges/:id/teams" element={<SimpleGuard roles={['organizer']}><Page><Teams/></Page></SimpleGuard>}/>
+    <Route path="/organizer/challenges/:id/teamforge" element={<SimpleGuard roles={['organizer']}><Page><TeamForgeStudio/></Page></SimpleGuard>}/>
+    <Route path="/organizer/challenges/:id/approved" element={<SimpleGuard roles={['organizer']}><Page><Teams approved/></Page></SimpleGuard>}/>
+    <Route path="/mentor" element={<SimpleGuard roles={['mentor']}><Page><MentorDashboard/></Page></SimpleGuard>}/>
+    <Route path="/mentor/resumes" element={<SimpleGuard roles={['mentor']}><Page><MentorResumeStudents/></Page></SimpleGuard>}/>
+    <Route path="/mentor/sessions" element={<SimpleGuard roles={['mentor']}><Page><MentorSessions/></Page></SimpleGuard>}/>
+    <Route path="/mentor/sessions/:id/meeting" element={<SimpleGuard roles={['mentor']}><Page><MeetingRoom/></Page></SimpleGuard>}/>
+    <Route path="/meet/sessions/:id" element={<SimpleGuard roles={['student']}><Page><MeetingRoom/></Page></SimpleGuard>}/>
+    <Route path="/mentor/projects" element={<SimpleGuard roles={['mentor']}><Page><MentorProjects/></Page></SimpleGuard>}/>
+    <Route path="/mentor/leaderboard" element={<SimpleGuard roles={['mentor']}><Page><MentorLeaderboard/></Page></SimpleGuard>}/>
+    <Route path="*" element={<Page><PageHeader title="404 · Page not found" subtitle="Try a workspace link from the sidebar."/></Page>}/>
+  </Routes>;
+}
 
 export default App;

@@ -4,4 +4,5 @@ dist/
 .env.*
 !.env.example
 backend/uploads/
+backend/judge0/judge0.conf
 .DS_Store

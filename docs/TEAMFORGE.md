@@ -90,7 +90,7 @@ sum is rounded to an integer; score tiers are Starter (0–39), Builder
 The planner uses saved profile skills and weekly availability to create
 upcoming practice sessions with Gemini. Add `GEMINI_API_KEY` to
 `backend/.env` and restart the backend; optionally set `GEMINI_MODEL` (defaults
-to `gemini-2.5-flash`). API keys stay on the backend and are never sent to the
+to `gemini-3.5-flash`). API keys stay on the backend and are never sent to the
 browser. A generated session's reminder is listed in Notifications with its
 scheduled time and becomes actionable when the session is due.
 Starting a session creates three skill-check questions and two coding

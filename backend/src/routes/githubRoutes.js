@@ -173,8 +173,8 @@ router.get(
 );
 
 /**
- * Fetch the number of commits authored by a user
- * during the last 30 days across public repositories.
+ * Fetch the number of public commits authored by a user
+ * during the last 30 days.
  */
 router.get("/commits/:username", requireAuth, async (req, res) => {
   try {
@@ -190,24 +190,30 @@ router.get("/commits/:username", requireAuth, async (req, res) => {
     const since = new Date();
     since.setUTCDate(since.getUTCDate() - 30);
     const sinceDate = since.toISOString().slice(0, 10);
+    const untilDate = new Date().toISOString().slice(0, 10);
 
-    // Search public commits authored by this GitHub user.
-    const query = [
-      `author:${username}`,
-      `committer-date:>=${sinceDate}`,
-    ].join(" ");
-
-    const searchUrl =
-      `https://api.github.com/search/commits?q=${encodeURIComponent(query)}&per_page=1`;
+    // Match commit authorship rather than when a commit was pushed or committed.
+    const searchParams = new URLSearchParams({
+      q: `author:${username} author-date:${sinceDate}..${untilDate}`,
+      per_page: "1",
+      sort: "author-date",
+      order: "desc",
+    });
+    const searchUrl = `https://api.github.com/search/commits?${searchParams}`;
 
     const result = await fetchGitHub(searchUrl);
+    if (!Number.isSafeInteger(result.total_count) || result.total_count < 0) {
+      return res.status(502).json({
+        message: "GitHub returned an invalid commit count.",
+      });
+    }
 
     return res.json({
       username,
-      commits: result.total_count || 0,
+      commits: result.total_count,
       periodDays: 30,
       since: sinceDate,
-      metric: "Public commits in the last 30 days",
+      metric: "Public commits authored in the last 30 days",
     });
   } catch (error) {
     return handleGitHubError(res, error, "commits");

@@ -23,7 +23,7 @@ async function ensureProfile(userId, tx = prisma) {
 
 async function getProfilePayload(userId) {
   const profile = await ensureProfile(userId);
-  const [user, fullProfile, activities, quizAttempts] = await Promise.all([
+  const [user, fullProfile, activities, quizAttempts, showcaseProjects] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true } }),
     prisma.studentProfile.findUnique({
       where: { userId },
@@ -42,6 +42,11 @@ async function getProfilePayload(userId) {
       where: { profileId: profile.id, submittedAt: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) } },
       select: { score: true, submittedAt: true },
       orderBy: { submittedAt: "desc" },
+    }),
+    prisma.studentBuildProject.findMany({
+      where: { ownerId: userId, showcasedAt: { not: null } },
+      select: { id: true, name: true, description: true, showcaseUrl: true, githubUrl: true, qualityScore: true, showcasedAt: true },
+      orderBy: { showcasedAt: "desc" },
     }),
   ]);
 
@@ -62,6 +67,7 @@ async function getProfilePayload(userId) {
       })),
       availability: fullProfile.availability.map(({ dayOfWeek, slot }) => ({ dayOfWeek, slot })),
       evidence: fullProfile.evidence,
+      showcaseProjects,
       activity: activities,
       stats: {
         recentActivityDays: new Set(activities
@@ -85,6 +91,25 @@ router.get("/", async (req, res) => {
     return res.status(500).json({
       error: { code: "PROFILE_UNAVAILABLE", message: "Could not load your profile." },
     });
+  }
+});
+
+router.get("/students/:userId/showcase", async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.userId },
+      select: { id: true, name: true },
+    });
+    if (!user) return res.status(404).json({ error: { code: "STUDENT_NOT_FOUND", message: "This student was not found." } });
+    const projects = await prisma.studentBuildProject.findMany({
+      where: { ownerId: user.id, showcasedAt: { not: null } },
+      select: { id: true, name: true, description: true, showcaseUrl: true, githubUrl: true, qualityScore: true, showcasedAt: true },
+      orderBy: { showcasedAt: "desc" },
+    });
+    return res.json({ user, projects });
+  } catch (error) {
+    console.error("Public project showcase loading failed:", error.message);
+    return res.status(500).json({ error: { code: "SHOWCASE_UNAVAILABLE", message: "Could not load this student's project showcase." } });
   }
 });
 

@@ -10,6 +10,11 @@ export const api = axios.create({
 });
 
 export const service = {
+  executePracticeCode: async (code, input = "") => {
+    const response = await api.post("/coding-practice/run", { code, input });
+    return response.data;
+  },
+
   register: async (data) => {
     const response = await api.post("/auth/register", data);
     return response.data;
@@ -261,6 +266,222 @@ createDisruption: async (projectId, data) => {
 
 getDisruption: async (scenarioId) => {
   const response = await api.get(`/teamforge/disruptions/${encodeURIComponent(scenarioId)}`);
+  return response.data;
+},
+
+getMentorSessions: async () => {
+  const response = await api.get("/mentor/sessions/mine");
+  return response.data;
+},
+
+getResumes: async () => {
+  const response = await api.get("/resumes");
+  return response.data;
+},
+
+getProjectMentorWorkspace: async () => {
+  const response = await api.get("/project-mentor");
+  return response.data;
+},
+
+getPublicProjectShowcase: async (userId) => {
+  const response = await api.get(`/profile/students/${encodeURIComponent(userId)}/showcase`);
+  return response.data;
+},
+
+getProjectRecommendations: async () => {
+  const response = await api.post("/project-mentor/recommendations");
+  return response.data;
+},
+
+createProjectRoadmap: async (data) => {
+  const response = await api.post("/project-mentor/roadmaps", data);
+  return response.data;
+},
+
+generateProjectArchitecture: async ({ name, idea, techStack, teamId, prdFile }) => {
+  const formData = new FormData();
+  formData.append("name", name);
+  formData.append("idea", idea);
+  formData.append("techStack", techStack);
+  if (teamId) formData.append("teamId", teamId);
+  if (prdFile) formData.append("prd", prdFile);
+  const response = await api.post("/project-mentor/architecture", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+},
+
+createBuildTask: async (projectId, data) => {
+  const response = await api.post(`/project-mentor/projects/${encodeURIComponent(projectId)}/tasks`, data);
+  return response.data;
+},
+
+updateBuildTask: async (projectId, taskId, data) => {
+  const response = await api.patch(`/project-mentor/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`, data);
+  return response.data;
+},
+
+updateBuildProjectStatus: async (projectId, status) => {
+  const response = await api.patch(`/project-mentor/projects/${encodeURIComponent(projectId)}/status`, { status });
+  return response.data;
+},
+
+deleteBuildProject: async (projectId) => {
+  const response = await api.delete(`/project-mentor/projects/${encodeURIComponent(projectId)}`);
+  return response.data;
+},
+
+analyzeBuildRepository: async (projectId, githubUrl) => {
+  const response = await api.post(`/project-mentor/projects/${encodeURIComponent(projectId)}/github-analysis`, { githubUrl });
+  return response.data;
+},
+
+removeBuildRepository: async (projectId) => {
+  const response = await api.delete(`/project-mentor/projects/${encodeURIComponent(projectId)}/github-analysis`);
+  return response.data;
+},
+
+explainBuildError: async (data) => {
+  const response = await api.post("/project-mentor/debug", data);
+  return response.data;
+},
+
+updateBuildProjectShowcase: async (projectId, data) => {
+  const response = await api.patch(`/project-mentor/projects/${encodeURIComponent(projectId)}/showcase`, data);
+  return response.data;
+},
+
+getResumeBuilderDraft: async () => {
+  const response = await api.get("/resumes/builder/draft");
+  return response.data;
+},
+
+saveResumeBuilderDraft: async (draft) => {
+  const response = await api.put("/resumes/builder/draft", draft);
+  return response.data;
+},
+
+uploadResume: async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await api.post("/resumes", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+},
+
+deleteResume: async (resumeId) => {
+  const response = await api.delete(`/resumes/${encodeURIComponent(resumeId)}`);
+  return response.data;
+},
+
+analyzeResume: async (resumeId) => {
+  const response = await api.post(`/resumes/${encodeURIComponent(resumeId)}/analyze`);
+  return response.data;
+},
+
+matchResumeToJob: async (resumeId, data) => {
+  const response = await api.post(`/resumes/${encodeURIComponent(resumeId)}/matches`, data);
+  return response.data;
+},
+
+getMentorResumeStudents: async () => {
+  const response = await api.get("/resumes/students");
+  return response.data;
+},
+
+getResumeDownloadUrl: (resumeId) =>
+  `${api.defaults.baseURL}/resumes/${encodeURIComponent(resumeId)}/download`,
+
+getMentorMeeting: async (sessionId) => {
+  const response = await api.get(`/mentor/sessions/${encodeURIComponent(sessionId)}/meeting`);
+  return response.data;
+},
+
+createMeetingNote: async (sessionId, data) => {
+  const response = await api.post(`/mentor/sessions/${encodeURIComponent(sessionId)}/meeting/notes`, data);
+  return response.data;
+},
+
+deleteMeetingNote: async (sessionId, noteId) => {
+  const response = await api.delete(`/mentor/sessions/${encodeURIComponent(sessionId)}/meeting/notes/${encodeURIComponent(noteId)}`);
+  return response.data;
+},
+
+getMeetingSocketUrl: () => {
+  const url = new URL("/api/mentor/meeting-signal", api.defaults.baseURL);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+},
+
+getOpenMentorSessions: async () => {
+  const response = await api.get("/mentor/sessions/open");
+  return response.data;
+},
+
+getBookedMentorSessions: async () => {
+  const response = await api.get("/mentor/sessions/booked");
+  return response.data;
+},
+
+createMentorSession: async (data) => {
+  const response = await api.post("/mentor/sessions", data);
+  return response.data;
+},
+
+updateMentorSession: async (sessionId, status) => {
+  const response = await api.patch(`/mentor/sessions/${encodeURIComponent(sessionId)}`, { status });
+  return response.data;
+},
+
+bookMentorSession: async (sessionId) => {
+  const response = await api.post(`/mentor/sessions/${encodeURIComponent(sessionId)}/book`);
+  return response.data;
+},
+
+cancelMentorSessionBooking: async (sessionId) => {
+  const response = await api.delete(`/mentor/sessions/${encodeURIComponent(sessionId)}/book`);
+  return response.data;
+},
+
+getMentorProjects: async () => {
+  const response = await api.get("/mentor/projects/mine");
+  return response.data;
+},
+
+getOpenMentorProjects: async () => {
+  const response = await api.get("/mentor/projects/open");
+  return response.data;
+},
+
+createMentorProject: async (data) => {
+  const response = await api.post("/mentor/projects", data);
+  return response.data;
+},
+
+updateMentorProject: async (projectId, status) => {
+  const response = await api.patch(`/mentor/projects/${encodeURIComponent(projectId)}`, { status });
+  return response.data;
+},
+
+submitProjectIdea: async (projectId, data) => {
+  const response = await api.post(`/mentor/projects/${encodeURIComponent(projectId)}/ideas`, data);
+  return response.data;
+},
+
+resubmitProjectIdea: async (submissionId, data) => {
+  const response = await api.patch(`/mentor/ideas/${encodeURIComponent(submissionId)}/resubmit`, data);
+  return response.data;
+},
+
+reviewProjectIdea: async (submissionId, data) => {
+  const response = await api.patch(`/mentor/ideas/${encodeURIComponent(submissionId)}`, data);
+  return response.data;
+},
+
+getMentorLeaderboard: async () => {
+  const response = await api.get("/mentor/leaderboard");
   return response.data;
 },
 
